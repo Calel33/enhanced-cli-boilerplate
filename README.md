@@ -41,9 +41,9 @@ npm install
 HUSTLE_API_KEY=your-api-key-here
 VAULT_ID=your-vault-id-here
 
-# Smithery Configuration (for hosted tools) - Already configured!
-SMITHERY_API_KEY=9c441b5c-510a-41cd-a242-f77baa272f2c
-SMITHERY_PROFILE=glad-squid-LrsVYY
+# Smithery Configuration (for hosted tools)
+SMITHERY_API_KEY=your-smithery-api-key-here
+SMITHERY_PROFILE=your-smithery-profile-here
 
 # Optional - Local Brave Search API (fallback only)
 BRAVE_API_KEY=your-brave-search-api-key
@@ -53,7 +53,7 @@ MCP_PORT=8081
 MCP_SERVER_URL=http://localhost:8081
 ```
 
-**Note**: The Smithery configuration is already set up with working credentials! You only need to add your AgentHustle credentials to get started.
+**Note**: You'll need to obtain your own Smithery credentials from [https://smithery.ai/](https://smithery.ai/) to use the hosted tools. Alternatively, you can use local tool implementations by providing the appropriate API keys.
 
 ## Usage
 

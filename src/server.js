@@ -34,8 +34,8 @@ const vaultId = process.env.VAULT_ID;
 // Initialize Smithery client for Brave Search
 const smitheryClient = new SmitheryClient({
   baseUrl: 'https://server.smithery.ai/@smithery-ai/brave-search',
-  apiKey: process.env.SMITHERY_API_KEY || '9c441b5c-510a-41cd-a242-f77baa272f2c',
-  profile: process.env.SMITHERY_PROFILE || 'glad-squid-LrsVYY'
+  apiKey: process.env.SMITHERY_API_KEY,
+  profile: process.env.SMITHERY_PROFILE
 });
 
 // Initialize Smithery connection on startup
