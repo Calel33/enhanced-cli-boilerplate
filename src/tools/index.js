@@ -16,26 +16,35 @@ export async function setupTools(mcpClient) {
     throw new Error('MCP server is not available');
   }
 
-  // Initialize tool instances
+  // Initialize tool instances with their canonical names
   const tools = [
-    new BraveSearchTool(),
-    new RugcheckTool(),
-    new WalletBalanceTool(),
-    new TrendingTokensTool()
+    { instance: new BraveSearchTool(), name: 'brave-search' },
+    { instance: new RugcheckTool(), name: 'rugcheck' },
+    { instance: new WalletBalanceTool(), name: 'wallet-balance' },
+    { instance: new TrendingTokensTool(), name: 'trending-tokens' }
   ];
 
-  // Fetch tool configurations from server
-  const serverTools = await mcpClient.listTools();
+  try {
+    // Fetch tool configurations from server
+    const serverTools = await mcpClient.listTools();
 
-  // Map server configurations to tool instances
-  return tools.map(tool => {
-    const serverTool = serverTools.find(t => t.name === tool.name);
-    if (serverTool) {
-      return {
-        ...tool,
-        ...serverTool
-      };
-    }
-    return tool;
-  }).filter(tool => tool.isAvailable());
+    // Map server configurations to tool instances
+    return tools
+      .map(tool => {
+        const serverTool = serverTools.find(t => t.name === tool.name);
+        if (serverTool) {
+          return {
+            ...tool.instance,
+            ...serverTool,
+            name: tool.name, // Ensure the name is preserved
+            isAvailable: () => true // Mark as available if we found a server match
+          };
+        }
+        return null;
+      })
+      .filter(Boolean); // Remove any tools that weren't found on the server
+  } catch (error) {
+    console.error('Error setting up tools:', error);
+    return []; // Return empty array if tool setup fails
+  }
 } 

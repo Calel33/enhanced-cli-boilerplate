@@ -122,7 +122,7 @@ function promptForInput() {
       console.error(chalk.red('Error:'), error.message);
     }
     
-    console.log('');
+    // Always prompt for next input after processing
     promptForInput();
   });
 }
@@ -213,6 +213,29 @@ async function handleCommand(input) {
   }
 }
 
+// Parse tool calls from AgentHustle response
+function parseToolCalls(content) {
+  const toolRegex = /<tool>(.*?)<\/tool>/gs;
+  const matches = [...content.matchAll(toolRegex)];
+  return matches.map(match => {
+    try {
+      const functionCall = match[1];
+      const toolMatch = functionCall.match(/(\w+)\((.*)\)/s);
+      if (toolMatch) {
+        const [_, toolName, paramsStr] = toolMatch;
+        const params = eval(`(${paramsStr})`);
+        return {
+          name: toolName === 'brave_web_search' ? 'brave-search' : toolName,
+          arguments: params
+        };
+      }
+    } catch (error) {
+      console.error('Error parsing tool call:', error);
+    }
+    return null;
+  }).filter(Boolean);
+}
+
 // Handle chat mode
 async function handleChatMode(input) {
   console.log(chalk.yellow('Thinking...'));
@@ -222,12 +245,16 @@ async function handleChatMode(input) {
       { role: 'user', content: input }
     ], { vaultId });
     
-    // Check for tool calls in the response
-    if (response.toolCalls && response.toolCalls.length > 0) {
+    console.log(chalk.green('\nResponse:'));
+    console.log(response.content);
+    
+    // Parse tool calls from the response content
+    const toolCalls = parseToolCalls(response.content);
+    if (toolCalls && toolCalls.length > 0) {
       console.log(chalk.blue('\n🤖 Agent Hustle is using tools to help answer your question...'));
       
       // Handle each tool call
-      for (const toolCall of response.toolCalls) {
+      for (const toolCall of toolCalls) {
         const tool = availableTools.find(t => t.name === toolCall.name);
         
         if (tool) {
@@ -254,14 +281,6 @@ async function handleChatMode(input) {
               
               console.log(chalk.magentaBright('\nAgent Hustle Summary & Follow-up:'));
               console.log(summaryResponse.content);
-              
-              // Check if the summary response has its own tool calls
-              if (summaryResponse.toolCalls && summaryResponse.toolCalls.length > 0) {
-                console.log(chalk.blue('\nTools used in summary:'));
-                summaryResponse.toolCalls.forEach((toolCall, i) => {
-                  console.log(`${i + 1}. ${toolCall.name}`);
-                });
-              }
             } else {
               console.log(chalk.yellow('\n🤖 The tool returned no specific data. Asking Agent Hustle what to do next...'));
               const emptyResultsPrompt = `The ${toolCall.name} tool executed successfully but returned no specific data. Please inform the user and suggest what to do next.`;
@@ -280,9 +299,6 @@ async function handleChatMode(input) {
           console.error(chalk.red(`Tool "${toolCall.name}" not found in available tools.`));
         }
       }
-    } else {
-      // No tool calls, just display the response
-      console.log(chalk.blue('\nAI:'), response.content);
     }
   } catch (error) {
     console.error(chalk.red('Error:'), error.message);

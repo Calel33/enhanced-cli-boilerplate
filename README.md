@@ -1,178 +1,157 @@
-# Enhanced CLI Boilerplate with MCP Integration
+# Enhanced CLI Boilerplate with AgentHustle Integration
 
-This is a boilerplate for creating an enhanced CLI application that integrates with the Mission Control Protocol (MCP) and AgentHustle API. It provides a powerful command-line interface for interacting with various crypto and web3 tools.
+This is an enhanced CLI boilerplate that demonstrates integration between AgentHustle's AI capabilities and tools using both local implementations and Smithery's hosted Model Context Protocol (MCP) services.
 
 ## Features
 
-- Interactive CLI with multiple operation modes
-- Real-time chat with AgentHustle AI
-- Integration with MCP tools
-- Support for Brave Search API
-- Crypto-specific tools (rugcheck, wallet balance, trending tokens)
-- Streaming mode for real-time responses
-- Built-in feedback system for responses
+- **Multiple Operation Modes**:
+  - `chat`: Default mode for interacting with AgentHustle AI
+  - `tools`: Direct tool usage mode
+  - `stream`: Streaming response mode (for real-time AI responses)
 
-## Prerequisites
+- **Integrated Tools**:
+  - `brave-search`: Web search using **Smithery hosted Brave Search** (preferred) or local Brave Search API
+  - `rugcheck`: Security analysis for crypto tokens
+  - `trending-tokens`: Get trending tokens on various blockchains
+  - `wallet-balance`: Check wallet balances
+  - `crypto-chat`: Specialized crypto-focused chat
 
-- Node.js v16 or higher
-- npm or yarn package manager
-- AgentHustle API key
-- Vault ID
-- (Optional) Brave Search API key
+- **Smithery Integration**:
+  - **Hosted MCP Tools**: Access to Smithery's hosted tool ecosystem
+  - **Automatic Fallback**: Falls back to local implementations when Smithery is unavailable
+  - **No API Key Management**: Use Smithery's hosted services without managing your own API keys
+  - **Consistent Interface**: Standard MCP protocol for all tools
 
-## Installation
+- **Tool Integration Features**:
+  - Automatic tool call parsing from AgentHustle responses
+  - Client-side tool execution
+  - Result summarization by AgentHustle
+  - Interactive follow-up suggestions
 
-1. Clone the repository or copy the boilerplate files
-2. Install dependencies:
+## Setup
+
+1. Install dependencies:
 ```bash
 npm install
 ```
 
-## Configuration
-
-1. Create a `.env` file in the root directory:
+2. Create a `.env` file with required credentials (copy from `env.example`):
 ```env
 # Required
-HUSTLE_API_KEY=your_hustle_api_key_here
-VAULT_ID=your_vault_id_here
+HUSTLE_API_KEY=your-api-key-here
+VAULT_ID=your-vault-id-here
+
+# Smithery Configuration (for hosted tools) - Already configured!
+SMITHERY_API_KEY=9c441b5c-510a-41cd-a242-f77baa272f2c
+SMITHERY_PROFILE=glad-squid-LrsVYY
+
+# Optional - Local Brave Search API (fallback only)
+BRAVE_API_KEY=your-brave-search-api-key
 
 # Optional
-PORT=8081
-DEBUG=true
+MCP_PORT=8081
 MCP_SERVER_URL=http://localhost:8081
-HUSTLE_API_URL=https://agenthustle.ai
-
-# Optional - For Brave Search
-BRAVE_API_KEY=your_brave_api_key_here
 ```
 
-2. Replace the placeholder values with your actual credentials:
-   - `HUSTLE_API_KEY`: Your AgentHustle API key
-   - `VAULT_ID`: Your vault ID
-   - `BRAVE_API_KEY`: (Optional) Your Brave Search API key
+**Note**: The Smithery configuration is already set up with working credentials! You only need to add your AgentHustle credentials to get started.
 
-## Running the Application
+## Usage
 
 1. Start the MCP server:
 ```bash
+npm run start:server
+# or
 node src/server.js
 ```
 
-2. In a new terminal, start the CLI client:
+2. In a new terminal, start the CLI:
 ```bash
+npm start
+# or
 node src/cli.js
 ```
 
-## Available Commands
+### Available Commands
 
-- `/mode chat` - Switch to chat mode (default)
-- `/mode tools` - Switch to tools mode
-- `/mode stream` - Switch to streaming chat mode
-- `/tools` - List available tools
-- `/use <tool>` - Use a specific tool
-- `/feedback <positive|negative> [comment]` - Submit feedback for the last response
-- `/exit` - Exit the application
+- `/mode chat`: Switch to chat mode (default)
+- `/mode tools`: Switch to tools mode
+- `/mode stream`: Switch to streaming mode
+- `/tools`: List available tools
+- `/use <tool-name>`: Use a specific tool directly
+- `/exit`: Exit the application
 
-## Available Tools
+### Tool Usage Examples
 
-1. **brave-search**
-   - Web search using Brave Search API
-   - Parameters:
-     - query: Search term
-     - count: Number of results (default: 5, max: 20)
-     - safesearch: Filter level (strict/moderate/off)
+1. **Using Chat Mode with Tool Integration**:
+```
+[chat]> What are the latest developments in Solana?
+```
+AgentHustle will automatically use the Smithery hosted Brave search tool and summarize the results.
 
-2. **rugcheck**
-   - Security analysis for crypto tokens
-   - Parameters:
-     - token: Token symbol or address
-     - chain: Blockchain network (default: solana)
-
-3. **trending-tokens**
-   - Get trending tokens on a blockchain
-   - Parameters:
-     - chain: Blockchain network (default: solana)
-     - limit: Maximum results (default: 10)
-
-4. **wallet-balance**
-   - Check wallet balance
-   - Parameters:
-     - address: Wallet address
-     - chain: Blockchain network (default: solana)
-
-5. **crypto-chat**
-   - Chat with AgentHustle AI about crypto
-   - Parameters:
-     - message: Your question or message
-
-6. **feedback**
-   - Submit feedback for previous responses
-   - Parameters:
-     - messageId: ID of the message to provide feedback for
-     - feedback: Rating (positive/negative)
-     - comment: Optional feedback comment
-
-## Usage Examples
-
-### Using Brave Search
-```bash
-# Method 1: Direct tool mode
-/mode tools
-brave-search
-# Follow the prompts for query and options
-
-# Method 2: Using the /use command
-/use brave-search
-# Follow the prompts for query and options
+2. **Direct Tool Usage**:
+```
+[chat]> /use brave-search
+Enter query: latest Solana developments
+Enter count (default: 5): 10
 ```
 
-### Checking Wallet Balance
-```bash
-/use wallet-balance
-# Enter wallet address when prompted
+## Smithery vs Local Tools
+
+- **Smithery Tools** (Preferred): Hosted on Smithery's infrastructure, no API key management required
+- **Local Tools** (Fallback): Run locally with your own API keys when Smithery is unavailable
+- **Automatic Selection**: The system automatically chooses Smithery when available, falls back to local implementations
+
+## Tool Response Handling
+
+The system handles tool responses in the following way:
+
+1. AgentHustle makes a tool call using the format:
+```
+<tool>brave_web_search({
+  query: "search query",
+  count: 10,
+  offset: 0
+})</tool>
 ```
 
-### Crypto Chat
-```bash
-# In chat mode (default)
-Tell me about Bitcoin's current market status
+2. The CLI intercepts and processes these tool calls
+3. Tools are executed via Smithery (preferred) or locally (fallback)
+4. Results are sent back to AgentHustle for summarization
+5. AgentHustle provides a summary and suggests next steps
 
-# Using tool directly
-/use crypto-chat
-# Enter your crypto-related question when prompted
-```
+## Development
 
-### Providing Feedback
-```bash
-# After receiving a response, you can provide feedback:
-/feedback positive Great explanation!
-/feedback negative This wasn't helpful
+### Adding New Tools
 
-# The system will automatically prompt for feedback after each response:
-👍 /feedback positive [comment]
-👎 /feedback negative [comment]
-```
+1. **For Smithery Integration**: Use existing Smithery tools or request new ones
+2. **For Local Tools**: Create a new tool file in `src/tools/` and add registration in `src/server.js`
+
+### Tool Implementation Requirements
+
+- Each tool must provide:
+  - `name`: Unique identifier
+  - `description`: Tool purpose
+  - `parameters`: JSON Schema of accepted parameters
+  - `execute()`: Implementation function (for local tools)
 
 ## Error Handling
 
-- If the MCP server is not running, the CLI will continue in chat-only mode
-- Invalid commands will display an error message
-- API errors will be displayed with relevant error messages
-- Missing required environment variables will be reported on startup
-- Feedback errors will be displayed with appropriate error messages
-
-## Dependencies
-
-- express: ^4.18.2
-- hustle-incognito: ^0.1.3
-- dotenv: ^16.3.1
-- axios: ^1.6.2
-- chalk: ^5.3.0
+The system includes comprehensive error handling for:
+- Missing environment variables
+- Smithery connection failures with automatic fallback
+- Tool execution failures
+- API communication issues
+- Invalid tool calls or parameters
 
 ## Contributing
 
-Feel free to submit issues and enhancement requests.
+Feel free to contribute by:
+- Adding new tools
+- Improving existing tool implementations
+- Enhancing the CLI interface
+- Adding new features
+- Improving Smithery integration
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+MIT License - See LICENSE file for details
