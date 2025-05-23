@@ -7,32 +7,23 @@ export class SmitheryClient {
     this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey;
     this.profile = config.profile;
-    this.client = null;
-    this.transport = null;
-    this.isConnected = false;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 3;
+    this._isAvailable = true; // Assume available if credentials are provided
   }
 
   /**
-   * Initialize the Smithery MCP client
-   * @returns {Promise<boolean>} True if connection successful
+   * Create a fresh transport and client for each request (stateless)
+   * @returns {Promise<{client: Client, transport: Transport}>} Fresh client and transport
    */
-  async initialize() {
+  async createFreshConnection() {
     try {
-      // Close existing connection if any
-      if (this.client) {
-        await this.close();
-      }
-
-      // Create transport using Smithery SDK
-      this.transport = createTransport(this.baseUrl, {
+      // Create fresh transport for this request
+      const transport = createTransport(this.baseUrl, {
         apiKey: this.apiKey,
         profile: this.profile
       });
 
-      // Create MCP client
-      this.client = new Client({
+      // Create fresh MCP client
+      const client = new Client({
         name: 'enhanced-cli-client',
         version: '1.0.0'
       }, {
@@ -40,35 +31,42 @@ export class SmitheryClient {
       });
 
       // Connect to the transport
-      await this.client.connect(this.transport);
+      await client.connect(transport);
       
-      this.isConnected = true;
-      this.reconnectAttempts = 0;
-      console.log('✓ Connected to Smithery MCP server');
-      return true;
+      return { client, transport };
     } catch (error) {
-      console.error('Failed to connect to Smithery:', error.message);
-      this.isConnected = false;
-      return false;
+      console.error('Failed to create Smithery connection:', error.message);
+      throw error;
     }
   }
 
   /**
-   * Ensure connection is active, reconnect if needed
-   * @returns {Promise<boolean>} True if connected
+   * Initialize the Smithery client (just validate credentials)
+   * @returns {Promise<boolean>} True if credentials are valid
    */
-  async ensureConnection() {
-    if (this.isConnected && this.client) {
-      return true;
+  async initialize() {
+    try {
+      // Test connection by trying to list tools
+      const { client, transport } = await this.createFreshConnection();
+      
+      try {
+        await client.listTools();
+        console.log('✓ Connected to Smithery MCP server');
+        this._isAvailable = true;
+        return true;
+      } finally {
+        // Always clean up the test connection
+        try {
+          await client.close();
+        } catch (closeError) {
+          // Ignore close errors
+        }
+      }
+    } catch (error) {
+      console.error('Failed to connect to Smithery:', error.message);
+      this._isAvailable = false;
+      return false;
     }
-
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      console.log(`Attempting to reconnect to Smithery (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
-      this.reconnectAttempts++;
-      return await this.initialize();
-    }
-
-    return false;
   }
 
   /**
@@ -76,18 +74,31 @@ export class SmitheryClient {
    * @returns {Promise<Array>} List of available tools
    */
   async listTools() {
-    if (!(await this.ensureConnection())) {
-      throw new Error('Cannot connect to Smithery server');
+    if (!this._isAvailable) {
+      throw new Error('Smithery client not available');
     }
     
+    let client, transport;
     try {
-      const result = await this.client.listTools();
+      // Create fresh connection for this request
+      ({ client, transport } = await this.createFreshConnection());
+      
+      const result = await client.listTools();
       return result.tools;
     } catch (error) {
       console.error('Error listing Smithery tools:', error);
-      // Mark as disconnected and try to reconnect on next call
-      this.isConnected = false;
+      // Mark as unavailable if connection fails
+      this._isAvailable = false;
       throw new Error(`Failed to list tools: ${error.message}`);
+    } finally {
+      // Always clean up the connection
+      if (client) {
+        try {
+          await client.close();
+        } catch (closeError) {
+          // Ignore close errors
+        }
+      }
     }
   }
 
@@ -98,12 +109,16 @@ export class SmitheryClient {
    * @returns {Promise<Object>} Tool execution result
    */
   async callTool(name, args) {
-    if (!(await this.ensureConnection())) {
-      throw new Error('Cannot connect to Smithery server');
+    if (!this._isAvailable) {
+      throw new Error('Smithery client not available');
     }
     
+    let client, transport;
     try {
-      const result = await this.client.callTool({
+      // Create fresh connection for this request
+      ({ client, transport } = await this.createFreshConnection());
+      
+      const result = await client.callTool({
         name,
         arguments: args
       });
@@ -111,34 +126,34 @@ export class SmitheryClient {
       return result;
     } catch (error) {
       console.error(`Error calling Smithery tool ${name}:`, error);
-      // Mark as disconnected and try to reconnect on next call
-      this.isConnected = false;
+      // Mark as unavailable if connection fails
+      this._isAvailable = false;
       throw new Error(`Failed to call tool ${name}: ${error.message}`);
-    }
-  }
-
-  /**
-   * Check if client is connected
-   * @returns {boolean} Connection status
-   */
-  isAvailable() {
-    return this.isConnected && this.client !== null;
-  }
-
-  /**
-   * Close the connection
-   */
-  async close() {
-    if (this.client) {
-      try {
-        await this.client.close();
-        this.isConnected = false;
-        this.client = null;
-        this.transport = null;
-        console.log('✓ Smithery client connection closed');
-      } catch (error) {
-        console.error('Error closing Smithery client:', error);
+    } finally {
+      // Always clean up the connection
+      if (client) {
+        try {
+          await client.close();
+        } catch (closeError) {
+          // Ignore close errors
+        }
       }
     }
+  }
+
+  /**
+   * Check if client is available
+   * @returns {boolean} Availability status
+   */
+  isAvailable() {
+    return this._isAvailable && Boolean(this.apiKey && this.profile);
+  }
+
+  /**
+   * Close any persistent connections (not needed in stateless mode)
+   */
+  async close() {
+    // No persistent connections to close in stateless mode
+    console.log('✓ Smithery client closed (stateless mode)');
   }
 } 

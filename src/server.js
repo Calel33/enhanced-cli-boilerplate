@@ -62,8 +62,8 @@ async function initializeSmithery() {
   }
 }
 
-// Initialize on startup
-initializeSmithery();
+// Initialize on startup - await the result
+await initializeSmithery();
 
 /**
  * Brave Search API client
@@ -254,24 +254,47 @@ app.post('/api/tools/call', async (req, res) => {
             const smitheryResult = await smitheryClient.callTool('brave_web_search', params);
             
             // Parse the result from Smithery
-            // Smithery returns results in content array with text
-            let parsedResult;
+            // Smithery returns results as formatted text, not JSON
+            let parsedResults = [];
             if (smitheryResult.content && smitheryResult.content[0] && smitheryResult.content[0].text) {
-              try {
-                parsedResult = JSON.parse(smitheryResult.content[0].text);
-              } catch (parseError) {
-                // If parsing fails, use the raw text
-                parsedResult = { raw: smitheryResult.content[0].text };
+              const text = smitheryResult.content[0].text;
+              
+              // Parse the text format: Title: ... Description: ... URL: ...
+              const resultBlocks = text.split('\n\n').filter(block => block.trim());
+              
+              for (const block of resultBlocks) {
+                const lines = block.split('\n');
+                let title = '', description = '', url = '';
+                
+                for (const line of lines) {
+                  if (line.startsWith('Title: ')) {
+                    title = line.substring(7).trim();
+                  } else if (line.startsWith('Description: ')) {
+                    description = line.substring(13).trim();
+                    // Remove HTML tags and decode entities
+                    description = description
+                      .replace(/<[^>]*>/g, '') // Remove HTML tags
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#x27;/g, "'")
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&');
+                  } else if (line.startsWith('URL: ')) {
+                    url = line.substring(5).trim();
+                  }
+                }
+                
+                if (title && url) {
+                  parsedResults.push({ title, description, url });
+                }
               }
-            } else {
-              parsedResult = smitheryResult;
             }
             
-            // Format the results consistently with your existing format
+            // Format the results consistently
             result = {
               query: params.query,
-              total: parsedResult.total || parsedResult.results?.length || 0,
-              results: parsedResult.results || parsedResult.web?.results || [],
+              total: parsedResults.length,
+              results: parsedResults,
               source: 'smithery'
             };
           } catch (error) {
@@ -338,21 +361,46 @@ app.post('/api/tools/call', async (req, res) => {
             const smitheryResult = await smitheryClient.callTool('brave_local_search', params);
             
             // Parse the result from Smithery
-            let parsedResult;
+            // Smithery returns results as formatted text, not JSON
+            let parsedResults = [];
             if (smitheryResult.content && smitheryResult.content[0] && smitheryResult.content[0].text) {
-              try {
-                parsedResult = JSON.parse(smitheryResult.content[0].text);
-              } catch (parseError) {
-                parsedResult = { raw: smitheryResult.content[0].text };
+              const text = smitheryResult.content[0].text;
+              
+              // Parse the text format: Title: ... Description: ... URL: ...
+              const resultBlocks = text.split('\n\n').filter(block => block.trim());
+              
+              for (const block of resultBlocks) {
+                const lines = block.split('\n');
+                let title = '', description = '', url = '';
+                
+                for (const line of lines) {
+                  if (line.startsWith('Title: ')) {
+                    title = line.substring(7).trim();
+                  } else if (line.startsWith('Description: ')) {
+                    description = line.substring(13).trim();
+                    // Remove HTML tags and decode entities
+                    description = description
+                      .replace(/<[^>]*>/g, '') // Remove HTML tags
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#x27;/g, "'")
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&');
+                  } else if (line.startsWith('URL: ')) {
+                    url = line.substring(5).trim();
+                  }
+                }
+                
+                if (title && url) {
+                  parsedResults.push({ title, description, url });
+                }
               }
-            } else {
-              parsedResult = smitheryResult;
             }
             
             result = {
               query: params.query,
-              total: parsedResult.total || parsedResult.results?.length || 0,
-              results: parsedResult.results || [],
+              total: parsedResults.length,
+              results: parsedResults,
               source: 'smithery'
             };
           } catch (error) {
