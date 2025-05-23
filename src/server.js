@@ -40,17 +40,30 @@ const smitheryClient = new SmitheryClient({
 
 // Initialize Smithery connection on startup
 let smitheryConnected = false;
-smitheryClient.initialize().then(success => {
-  smitheryConnected = success;
-  if (success) {
-    console.log('✓ Smithery Brave Search integration ready');
-  } else {
-    console.log('⚠ Smithery connection failed, falling back to local tools');
+async function initializeSmithery() {
+  if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
+    console.log('⚠ Smithery credentials not configured, skipping Smithery integration');
+    return false;
   }
-}).catch(error => {
-  console.error('Error initializing Smithery:', error.message);
-  smitheryConnected = false;
-});
+
+  try {
+    const success = await smitheryClient.initialize();
+    smitheryConnected = success;
+    if (success) {
+      console.log('✓ Smithery Brave Search integration ready');
+    } else {
+      console.log('⚠ Smithery connection failed, falling back to local tools');
+    }
+    return success;
+  } catch (error) {
+    console.error('Error initializing Smithery:', error.message);
+    smitheryConnected = false;
+    return false;
+  }
+}
+
+// Initialize on startup
+initializeSmithery();
 
 /**
  * Brave Search API client
@@ -171,7 +184,7 @@ app.post('/api/tools/list', async (req, res) => {
   ];
 
   // Add Smithery Brave Search if connected
-  if (smitheryConnected) {
+  if (smitheryConnected && smitheryClient.isAvailable()) {
     try {
       const smitheryTools = await smitheryClient.listTools();
       // Add Smithery tools to our tools list
@@ -186,6 +199,9 @@ app.post('/api/tools/list', async (req, res) => {
       console.log(`✓ Added ${smitheryTools.length} Smithery tools to the list`);
     } catch (error) {
       console.error('Error fetching Smithery tools:', error.message);
+      // Try to reconnect for next time
+      smitheryConnected = false;
+      console.log('⚠ Marking Smithery as disconnected, will attempt reconnection on next tool call');
     }
   }
 
@@ -232,7 +248,7 @@ app.post('/api/tools/call', async (req, res) => {
       case 'brave-search':
       case 'brave_web_search': // Handle Smithery tool name
         // Use Smithery if connected, otherwise fall back to local implementation
-        if (smitheryConnected && name === 'brave_web_search') {
+        if ((smitheryConnected || await initializeSmithery()) && name === 'brave_web_search') {
           console.log(`Executing Smithery Brave search for query: ${params.query}`);
           try {
             const smitheryResult = await smitheryClient.callTool('brave_web_search', params);
@@ -260,7 +276,30 @@ app.post('/api/tools/call', async (req, res) => {
             };
           } catch (error) {
             console.error('Error in Smithery Brave search:', error);
-            throw new Error(`Smithery Brave Search failed: ${error.message}`);
+            smitheryConnected = false; // Mark as disconnected
+            
+            // Try local fallback if available
+            if (process.env.BRAVE_API_KEY) {
+              console.log('Falling back to local Brave Search...');
+              const braveClient = new BraveSearchClient(process.env.BRAVE_API_KEY);
+              const searchResult = await braveClient.search(params.query, {
+                count: params.count || 5,
+                safesearch: params.safesearch || 'moderate'
+              });
+              
+              result = {
+                query: params.query,
+                total: searchResult.web?.total || 0,
+                results: searchResult.web?.results?.map(r => ({
+                  title: r.title,
+                  description: r.description,
+                  url: r.url
+                })) || [],
+                source: 'local-fallback'
+              };
+            } else {
+              throw new Error(`Smithery Brave Search failed and no local API key available: ${error.message}`);
+            }
           }
         } else if (process.env.BRAVE_API_KEY) {
           // Fallback to local Brave Search implementation
@@ -293,7 +332,7 @@ app.post('/api/tools/call', async (req, res) => {
         break;
 
       case 'brave_local_search': // Handle Smithery local search
-        if (smitheryConnected) {
+        if (smitheryConnected || await initializeSmithery()) {
           console.log(`Executing Smithery local search for query: ${params.query}`);
           try {
             const smitheryResult = await smitheryClient.callTool('brave_local_search', params);
@@ -318,6 +357,7 @@ app.post('/api/tools/call', async (req, res) => {
             };
           } catch (error) {
             console.error('Error in Smithery local search:', error);
+            smitheryConnected = false; // Mark as disconnected
             throw new Error(`Smithery Local Search failed: ${error.message}`);
           }
         } else {

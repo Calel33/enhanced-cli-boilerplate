@@ -8,7 +8,10 @@ export class SmitheryClient {
     this.apiKey = config.apiKey;
     this.profile = config.profile;
     this.client = null;
+    this.transport = null;
     this.isConnected = false;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 3;
   }
 
   /**
@@ -17,8 +20,13 @@ export class SmitheryClient {
    */
   async initialize() {
     try {
+      // Close existing connection if any
+      if (this.client) {
+        await this.close();
+      }
+
       // Create transport using Smithery SDK
-      const transport = createTransport(this.baseUrl, {
+      this.transport = createTransport(this.baseUrl, {
         apiKey: this.apiKey,
         profile: this.profile
       });
@@ -32,9 +40,10 @@ export class SmitheryClient {
       });
 
       // Connect to the transport
-      await this.client.connect(transport);
+      await this.client.connect(this.transport);
       
       this.isConnected = true;
+      this.reconnectAttempts = 0;
       console.log('✓ Connected to Smithery MCP server');
       return true;
     } catch (error) {
@@ -45,12 +54,30 @@ export class SmitheryClient {
   }
 
   /**
+   * Ensure connection is active, reconnect if needed
+   * @returns {Promise<boolean>} True if connected
+   */
+  async ensureConnection() {
+    if (this.isConnected && this.client) {
+      return true;
+    }
+
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      console.log(`Attempting to reconnect to Smithery (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
+      this.reconnectAttempts++;
+      return await this.initialize();
+    }
+
+    return false;
+  }
+
+  /**
    * List available tools from Smithery
    * @returns {Promise<Array>} List of available tools
    */
   async listTools() {
-    if (!this.client || !this.isConnected) {
-      throw new Error('Client not initialized or not connected');
+    if (!(await this.ensureConnection())) {
+      throw new Error('Cannot connect to Smithery server');
     }
     
     try {
@@ -58,6 +85,8 @@ export class SmitheryClient {
       return result.tools;
     } catch (error) {
       console.error('Error listing Smithery tools:', error);
+      // Mark as disconnected and try to reconnect on next call
+      this.isConnected = false;
       throw new Error(`Failed to list tools: ${error.message}`);
     }
   }
@@ -69,8 +98,8 @@ export class SmitheryClient {
    * @returns {Promise<Object>} Tool execution result
    */
   async callTool(name, args) {
-    if (!this.client || !this.isConnected) {
-      throw new Error('Client not initialized or not connected');
+    if (!(await this.ensureConnection())) {
+      throw new Error('Cannot connect to Smithery server');
     }
     
     try {
@@ -82,6 +111,8 @@ export class SmitheryClient {
       return result;
     } catch (error) {
       console.error(`Error calling Smithery tool ${name}:`, error);
+      // Mark as disconnected and try to reconnect on next call
+      this.isConnected = false;
       throw new Error(`Failed to call tool ${name}: ${error.message}`);
     }
   }
@@ -102,6 +133,8 @@ export class SmitheryClient {
       try {
         await this.client.close();
         this.isConnected = false;
+        this.client = null;
+        this.transport = null;
         console.log('✓ Smithery client connection closed');
       } catch (error) {
         console.error('Error closing Smithery client:', error);
