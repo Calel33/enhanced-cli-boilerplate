@@ -40,17 +40,30 @@ const smitheryClient = new SmitheryClient({
 
 // Initialize Smithery connection on startup
 let smitheryConnected = false;
-smitheryClient.initialize().then(success => {
-  smitheryConnected = success;
-  if (success) {
-    console.log('✓ Smithery Brave Search integration ready');
-  } else {
-    console.log('⚠ Smithery connection failed, falling back to local tools');
+async function initializeSmithery() {
+  if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
+    console.log('⚠ Smithery credentials not configured, skipping Smithery integration');
+    return false;
   }
-}).catch(error => {
-  console.error('Error initializing Smithery:', error.message);
-  smitheryConnected = false;
-});
+
+  try {
+    const success = await smitheryClient.initialize();
+    smitheryConnected = success;
+    if (success) {
+      console.log('✓ Smithery Brave Search integration ready');
+    } else {
+      console.log('⚠ Smithery connection failed, falling back to local tools');
+    }
+    return success;
+  } catch (error) {
+    console.error('Error initializing Smithery:', error.message);
+    smitheryConnected = false;
+    return false;
+  }
+}
+
+// Initialize on startup - await the result
+await initializeSmithery();
 
 /**
  * Brave Search API client
@@ -171,7 +184,7 @@ app.post('/api/tools/list', async (req, res) => {
   ];
 
   // Add Smithery Brave Search if connected
-  if (smitheryConnected) {
+  if (smitheryConnected && smitheryClient.isAvailable()) {
     try {
       const smitheryTools = await smitheryClient.listTools();
       // Add Smithery tools to our tools list
@@ -186,6 +199,9 @@ app.post('/api/tools/list', async (req, res) => {
       console.log(`✓ Added ${smitheryTools.length} Smithery tools to the list`);
     } catch (error) {
       console.error('Error fetching Smithery tools:', error.message);
+      // Try to reconnect for next time
+      smitheryConnected = false;
+      console.log('⚠ Marking Smithery as disconnected, will attempt reconnection on next tool call');
     }
   }
 
@@ -232,35 +248,81 @@ app.post('/api/tools/call', async (req, res) => {
       case 'brave-search':
       case 'brave_web_search': // Handle Smithery tool name
         // Use Smithery if connected, otherwise fall back to local implementation
-        if (smitheryConnected && name === 'brave_web_search') {
+        if ((smitheryConnected || await initializeSmithery()) && name === 'brave_web_search') {
           console.log(`Executing Smithery Brave search for query: ${params.query}`);
           try {
             const smitheryResult = await smitheryClient.callTool('brave_web_search', params);
             
             // Parse the result from Smithery
-            // Smithery returns results in content array with text
-            let parsedResult;
+            // Smithery returns results as formatted text, not JSON
+            let parsedResults = [];
             if (smitheryResult.content && smitheryResult.content[0] && smitheryResult.content[0].text) {
-              try {
-                parsedResult = JSON.parse(smitheryResult.content[0].text);
-              } catch (parseError) {
-                // If parsing fails, use the raw text
-                parsedResult = { raw: smitheryResult.content[0].text };
+              const text = smitheryResult.content[0].text;
+              
+              // Parse the text format: Title: ... Description: ... URL: ...
+              const resultBlocks = text.split('\n\n').filter(block => block.trim());
+              
+              for (const block of resultBlocks) {
+                const lines = block.split('\n');
+                let title = '', description = '', url = '';
+                
+                for (const line of lines) {
+                  if (line.startsWith('Title: ')) {
+                    title = line.substring(7).trim();
+                  } else if (line.startsWith('Description: ')) {
+                    description = line.substring(13).trim();
+                    // Remove HTML tags and decode entities
+                    description = description
+                      .replace(/<[^>]*>/g, '') // Remove HTML tags
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#x27;/g, "'")
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&');
+                  } else if (line.startsWith('URL: ')) {
+                    url = line.substring(5).trim();
+                  }
+                }
+                
+                if (title && url) {
+                  parsedResults.push({ title, description, url });
+                }
               }
-            } else {
-              parsedResult = smitheryResult;
             }
             
-            // Format the results consistently with your existing format
+            // Format the results consistently
             result = {
               query: params.query,
-              total: parsedResult.total || parsedResult.results?.length || 0,
-              results: parsedResult.results || parsedResult.web?.results || [],
+              total: parsedResults.length,
+              results: parsedResults,
               source: 'smithery'
             };
           } catch (error) {
             console.error('Error in Smithery Brave search:', error);
-            throw new Error(`Smithery Brave Search failed: ${error.message}`);
+            smitheryConnected = false; // Mark as disconnected
+            
+            // Try local fallback if available
+            if (process.env.BRAVE_API_KEY) {
+              console.log('Falling back to local Brave Search...');
+              const braveClient = new BraveSearchClient(process.env.BRAVE_API_KEY);
+              const searchResult = await braveClient.search(params.query, {
+                count: params.count || 5,
+                safesearch: params.safesearch || 'moderate'
+              });
+              
+              result = {
+                query: params.query,
+                total: searchResult.web?.total || 0,
+                results: searchResult.web?.results?.map(r => ({
+                  title: r.title,
+                  description: r.description,
+                  url: r.url
+                })) || [],
+                source: 'local-fallback'
+              };
+            } else {
+              throw new Error(`Smithery Brave Search failed and no local API key available: ${error.message}`);
+            }
           }
         } else if (process.env.BRAVE_API_KEY) {
           // Fallback to local Brave Search implementation
@@ -293,31 +355,57 @@ app.post('/api/tools/call', async (req, res) => {
         break;
 
       case 'brave_local_search': // Handle Smithery local search
-        if (smitheryConnected) {
+        if (smitheryConnected || await initializeSmithery()) {
           console.log(`Executing Smithery local search for query: ${params.query}`);
           try {
             const smitheryResult = await smitheryClient.callTool('brave_local_search', params);
             
             // Parse the result from Smithery
-            let parsedResult;
+            // Smithery returns results as formatted text, not JSON
+            let parsedResults = [];
             if (smitheryResult.content && smitheryResult.content[0] && smitheryResult.content[0].text) {
-              try {
-                parsedResult = JSON.parse(smitheryResult.content[0].text);
-              } catch (parseError) {
-                parsedResult = { raw: smitheryResult.content[0].text };
+              const text = smitheryResult.content[0].text;
+              
+              // Parse the text format: Title: ... Description: ... URL: ...
+              const resultBlocks = text.split('\n\n').filter(block => block.trim());
+              
+              for (const block of resultBlocks) {
+                const lines = block.split('\n');
+                let title = '', description = '', url = '';
+                
+                for (const line of lines) {
+                  if (line.startsWith('Title: ')) {
+                    title = line.substring(7).trim();
+                  } else if (line.startsWith('Description: ')) {
+                    description = line.substring(13).trim();
+                    // Remove HTML tags and decode entities
+                    description = description
+                      .replace(/<[^>]*>/g, '') // Remove HTML tags
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#x27;/g, "'")
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&');
+                  } else if (line.startsWith('URL: ')) {
+                    url = line.substring(5).trim();
+                  }
+                }
+                
+                if (title && url) {
+                  parsedResults.push({ title, description, url });
+                }
               }
-            } else {
-              parsedResult = smitheryResult;
             }
             
             result = {
               query: params.query,
-              total: parsedResult.total || parsedResult.results?.length || 0,
-              results: parsedResult.results || [],
+              total: parsedResults.length,
+              results: parsedResults,
               source: 'smithery'
             };
           } catch (error) {
             console.error('Error in Smithery local search:', error);
+            smitheryConnected = false; // Mark as disconnected
             throw new Error(`Smithery Local Search failed: ${error.message}`);
           }
         } else {

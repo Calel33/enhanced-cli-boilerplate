@@ -146,9 +146,26 @@ async function handleCommand(input) {
     case 'tools':
       if (availableTools.length > 0) {
         console.log(chalk.green('\nAvailable Tools:'));
-        availableTools.forEach(tool => {
-          console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
-        });
+        
+        // Group tools by source
+        const localTools = availableTools.filter(t => !t.source || t.source === 'local');
+        const smitheryTools = availableTools.filter(t => t.source === 'smithery');
+        
+        if (localTools.length > 0) {
+          console.log(chalk.blue('\n📦 Local Tools:'));
+          localTools.forEach(tool => {
+            console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
+          });
+        }
+        
+        if (smitheryTools.length > 0) {
+          console.log(chalk.magenta('\n🌐 Smithery Hosted Tools:'));
+          smitheryTools.forEach(tool => {
+            console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
+          });
+        }
+        
+        console.log(chalk.gray(`\nTotal: ${availableTools.length} tools available`));
       } else {
         console.log(chalk.yellow('No tools available. MCP server may not be connected.'));
       }
@@ -224,8 +241,20 @@ function parseToolCalls(content) {
       if (toolMatch) {
         const [_, toolName, paramsStr] = toolMatch;
         const params = eval(`(${paramsStr})`);
+        
+        // Map tool names to handle both local and Smithery naming conventions
+        let mappedToolName = toolName;
+        if (toolName === 'brave_web_search' || toolName === 'brave-search') {
+          // Check if we have Smithery brave_web_search available, otherwise use local brave-search
+          const smitheryTool = availableTools.find(t => t.name === 'brave_web_search');
+          const localTool = availableTools.find(t => t.name === 'brave-search');
+          mappedToolName = smitheryTool ? 'brave_web_search' : (localTool ? 'brave-search' : toolName);
+        } else if (toolName === 'brave_local_search') {
+          mappedToolName = 'brave_local_search';
+        }
+        
         return {
-          name: toolName === 'brave_web_search' ? 'brave-search' : toolName,
+          name: mappedToolName,
           arguments: params
         };
       }
@@ -258,7 +287,8 @@ async function handleChatMode(input) {
         const tool = availableTools.find(t => t.name === toolCall.name);
         
         if (tool) {
-          console.log(chalk.blue(`\n🔧 Using ${toolCall.name}...`));
+          const toolSource = tool.source === 'smithery' ? '🌐 Smithery' : '📦 Local';
+          console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
           try {
             // Call the tool
             const toolResponse = await axios.post(`${MCP_SERVER_URL}/api/tools/call`, {
@@ -266,37 +296,63 @@ async function handleChatMode(input) {
               params: toolCall.arguments
             });
             
-            if (toolResponse.data) {
-              console.log(chalk.green('\nTool Results:'));
-              console.log(JSON.stringify(toolResponse.data, null, 2));
+            if (toolResponse.data && toolResponse.data.success) {
+              console.log(chalk.green('\n✅ Tool executed successfully'));
+              
+              // Show brief result summary
+              if (toolResponse.data.result) {
+                const result = toolResponse.data.result;
+                if (result.query && result.results) {
+                  console.log(chalk.cyan(`📊 Found ${result.results.length} results for: "${result.query}"`));
+                } else if (result.response) {
+                  console.log(chalk.cyan(`💬 Response: ${result.response.substring(0, 100)}...`));
+                }
+              }
               
               // Ask AgentHustle to summarize the results
               console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze the results...'));
-              const resultsString = JSON.stringify(toolResponse.data, null, 2);
+              const resultsString = JSON.stringify(toolResponse.data.result, null, 2);
               const followUpPrompt = `The ${toolCall.name} tool has returned the following data based on the request:\n\n\`\`\`json\n${resultsString}\n\`\`\`\n\nPlease summarize this data for the user and then ask if they would like to do anything further with it.`;
               
               const summaryResponse = await client.chat([
                 { role: 'user', content: followUpPrompt }
               ], { vaultId });
               
-              console.log(chalk.magentaBright('\nAgent Hustle Summary & Follow-up:'));
+              console.log(chalk.magentaBright('\n🤖 Agent Hustle Summary & Follow-up:'));
               console.log(summaryResponse.content);
             } else {
-              console.log(chalk.yellow('\n🤖 The tool returned no specific data. Asking Agent Hustle what to do next...'));
-              const emptyResultsPrompt = `The ${toolCall.name} tool executed successfully but returned no specific data. Please inform the user and suggest what to do next.`;
+              console.log(chalk.red(`\n❌ Tool execution failed: ${toolResponse.data?.error || 'Unknown error'}`));
               
-              const followUpResponse = await client.chat([
-                { role: 'user', content: emptyResultsPrompt }
+              // Still ask AgentHustle for guidance
+              const errorPrompt = `The ${toolCall.name} tool failed to execute with error: ${toolResponse.data?.error || 'Unknown error'}. Please inform the user and suggest alternative approaches.`;
+              
+              const errorResponse = await client.chat([
+                { role: 'user', content: errorPrompt }
               ], { vaultId });
               
-              console.log(chalk.magentaBright('\nAgent Hustle Follow-up:'));
-              console.log(followUpResponse.content);
+              console.log(chalk.magentaBright('\n🤖 Agent Hustle Error Guidance:'));
+              console.log(errorResponse.content);
             }
           } catch (error) {
-            console.error(chalk.red(`Error using ${toolCall.name}:`), error.message);
+            console.error(chalk.red(`\n❌ Error using ${toolCall.name}:`), error.message);
+            
+            // Ask AgentHustle for guidance on the error
+            const errorPrompt = `There was a technical error when trying to use the ${toolCall.name} tool: ${error.message}. Please inform the user and suggest what to do next.`;
+            
+            try {
+              const errorResponse = await client.chat([
+                { role: 'user', content: errorPrompt }
+              ], { vaultId });
+              
+              console.log(chalk.magentaBright('\n🤖 Agent Hustle Error Guidance:'));
+              console.log(errorResponse.content);
+            } catch (chatError) {
+              console.error(chalk.red('Could not get guidance from Agent Hustle:'), chatError.message);
+            }
           }
         } else {
-          console.error(chalk.red(`Tool "${toolCall.name}" not found in available tools.`));
+          console.error(chalk.red(`\n❌ Tool "${toolCall.name}" not found in available tools.`));
+          console.log(chalk.yellow('Available tools:'), availableTools.map(t => t.name).join(', '));
         }
       }
     }

@@ -28,6 +28,13 @@ This is an enhanced CLI boilerplate that demonstrates integration between AgentH
   - Result summarization by AgentHustle
   - Interactive follow-up suggestions
 
+## 📚 Documentation
+
+- **[Quick Reference](QUICK_REFERENCE.md)**: 5-minute checklist for adding any Smithery tool
+- **[Smithery Integration Guide](SMITHERY_INTEGRATION_GUIDE.md)**: Complete guide for adding any Smithery tool to your project
+- **[Tool Template](templates/new-smithery-tool-template.js)**: Copy-paste template for quick tool integration
+- **[Weather Tool Example](examples/add-weather-tool-example.js)**: Concrete example of adding a weather tool
+
 ## Setup
 
 1. Install dependencies:
@@ -101,6 +108,23 @@ Enter count (default: 5): 10
 - **Local Tools** (Fallback): Run locally with your own API keys when Smithery is unavailable
 - **Automatic Selection**: The system automatically chooses Smithery when available, falls back to local implementations
 
+## 🔧 Adding New Smithery Tools
+
+Want to add more tools from Smithery? It's easy! Follow these steps:
+
+1. **Quick Start**: Check the [Smithery Integration Guide](SMITHERY_INTEGRATION_GUIDE.md) for detailed instructions
+2. **Use the Template**: Copy `templates/new-smithery-tool-template.js` and modify it for your tool
+3. **See Examples**: Look at `examples/add-weather-tool-example.js` for a complete working example
+
+### Basic Steps:
+1. Find your tool on [smithery.ai](https://smithery.ai)
+2. Add tool configuration to `src/utils/smithery-client.js`
+3. Add tool execution logic to `src/server.js`
+4. Create a test script
+5. Test and enjoy!
+
+The same pattern used for Brave Search works for **any** Smithery tool.
+
 ## Tool Response Handling
 
 The system handles tool responses in the following way:
@@ -123,7 +147,7 @@ The system handles tool responses in the following way:
 
 ### Adding New Tools
 
-1. **For Smithery Integration**: Use existing Smithery tools or request new ones
+1. **For Smithery Integration**: Follow the [Smithery Integration Guide](SMITHERY_INTEGRATION_GUIDE.md)
 2. **For Local Tools**: Create a new tool file in `src/tools/` and add registration in `src/server.js`
 
 ### Tool Implementation Requirements
@@ -146,7 +170,7 @@ The system includes comprehensive error handling for:
 ## Contributing
 
 Feel free to contribute by:
-- Adding new tools
+- Adding new tools using the [Smithery Integration Guide](SMITHERY_INTEGRATION_GUIDE.md)
 - Improving existing tool implementations
 - Enhancing the CLI interface
 - Adding new features
