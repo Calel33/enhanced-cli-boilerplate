@@ -282,13 +282,18 @@ async function handleChatMode(input) {
     if (toolCalls && toolCalls.length > 0) {
       console.log(chalk.blue('\n🤖 Agent Hustle is using tools to help answer your question...'));
       
-      // Handle each tool call
+      // Collect all tool results
+      const toolResults = [];
+      let hasErrors = false;
+      
+      // Execute all tools and collect results
       for (const toolCall of toolCalls) {
         const tool = availableTools.find(t => t.name === toolCall.name);
         
         if (tool) {
           const toolSource = tool.source === 'smithery' ? '🌐 Smithery' : '📦 Local';
           console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
+          
           try {
             // Call the tool
             const toolResponse = await axios.post(`${MCP_SERVER_URL}/api/tools/call`, {
@@ -297,7 +302,7 @@ async function handleChatMode(input) {
             });
             
             if (toolResponse.data && toolResponse.data.success) {
-              console.log(chalk.green('\n✅ Tool executed successfully'));
+              console.log(chalk.green('✅ Tool executed successfully'));
               
               // Show brief result summary
               if (toolResponse.data.result) {
@@ -309,50 +314,99 @@ async function handleChatMode(input) {
                 }
               }
               
-              // Ask AgentHustle to summarize the results
-              console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze the results...'));
-              const resultsString = JSON.stringify(toolResponse.data.result, null, 2);
-              const followUpPrompt = `The ${toolCall.name} tool has returned the following data based on the request:\n\n\`\`\`json\n${resultsString}\n\`\`\`\n\nPlease summarize this data for the user and then ask if they would like to do anything further with it.`;
-              
-              const summaryResponse = await client.chat([
-                { role: 'user', content: followUpPrompt }
-              ], { vaultId });
-              
-              console.log(chalk.magentaBright('\n🤖 Agent Hustle Summary & Follow-up:'));
-              console.log(summaryResponse.content);
+              // Collect successful result
+              toolResults.push({
+                toolName: toolCall.name,
+                success: true,
+                result: toolResponse.data.result
+              });
             } else {
-              console.log(chalk.red(`\n❌ Tool execution failed: ${toolResponse.data?.error || 'Unknown error'}`));
+              console.log(chalk.red(`❌ Tool execution failed: ${toolResponse.data?.error || 'Unknown error'}`));
+              hasErrors = true;
               
-              // Still ask AgentHustle for guidance
-              const errorPrompt = `The ${toolCall.name} tool failed to execute with error: ${toolResponse.data?.error || 'Unknown error'}. Please inform the user and suggest alternative approaches.`;
-              
-              const errorResponse = await client.chat([
-                { role: 'user', content: errorPrompt }
-              ], { vaultId });
-              
-              console.log(chalk.magentaBright('\n🤖 Agent Hustle Error Guidance:'));
-              console.log(errorResponse.content);
+              // Collect error result
+              toolResults.push({
+                toolName: toolCall.name,
+                success: false,
+                error: toolResponse.data?.error || 'Unknown error'
+              });
             }
           } catch (error) {
-            console.error(chalk.red(`\n❌ Error using ${toolCall.name}:`), error.message);
+            console.error(chalk.red(`❌ Error using ${toolCall.name}:`), error.message);
+            hasErrors = true;
             
-            // Ask AgentHustle for guidance on the error
-            const errorPrompt = `There was a technical error when trying to use the ${toolCall.name} tool: ${error.message}. Please inform the user and suggest what to do next.`;
-            
-            try {
-              const errorResponse = await client.chat([
-                { role: 'user', content: errorPrompt }
-              ], { vaultId });
-              
-              console.log(chalk.magentaBright('\n🤖 Agent Hustle Error Guidance:'));
-              console.log(errorResponse.content);
-            } catch (chatError) {
-              console.error(chalk.red('Could not get guidance from Agent Hustle:'), chatError.message);
-            }
+            // Collect error result
+            toolResults.push({
+              toolName: toolCall.name,
+              success: false,
+              error: error.message
+            });
           }
         } else {
-          console.error(chalk.red(`\n❌ Tool "${toolCall.name}" not found in available tools.`));
+          console.error(chalk.red(`❌ Tool "${toolCall.name}" not found in available tools.`));
           console.log(chalk.yellow('Available tools:'), availableTools.map(t => t.name).join(', '));
+          hasErrors = true;
+          
+          // Collect error result
+          toolResults.push({
+            toolName: toolCall.name,
+            success: false,
+            error: `Tool "${toolCall.name}" not found`
+          });
+        }
+      }
+      
+      // Send all results to AgentHustle for a single comprehensive summary
+      if (toolResults.length > 0) {
+        console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze all results...'));
+        
+        let followUpPrompt;
+        if (hasErrors) {
+          // Handle mixed success/error results
+          const successfulResults = toolResults.filter(r => r.success);
+          const failedResults = toolResults.filter(r => !r.success);
+          
+          followUpPrompt = `I executed ${toolResults.length} tool(s) with the following results:
+
+SUCCESSFUL TOOLS (${successfulResults.length}):
+${successfulResults.map(r => `- ${r.toolName}: ${JSON.stringify(r.result, null, 2)}`).join('\n')}
+
+FAILED TOOLS (${failedResults.length}):
+${failedResults.map(r => `- ${r.toolName}: ${r.error}`).join('\n')}
+
+Please summarize the successful results for the user, acknowledge any failures, and ask if they would like to do anything further with the data or try alternative approaches for the failed tools.`;
+        } else {
+          // All tools succeeded
+          const resultsString = toolResults.map(r => 
+            `${r.toolName} results: ${JSON.stringify(r.result, null, 2)}`
+          ).join('\n\n');
+          
+          followUpPrompt = `I successfully executed ${toolResults.length} tool(s) and got the following results:
+
+${resultsString}
+
+Please summarize this data for the user and then ask if they would like to do anything further with it.`;
+        }
+        
+        try {
+          const summaryResponse = await client.chat([
+            { role: 'user', content: followUpPrompt }
+          ], { vaultId });
+          
+          console.log(chalk.magentaBright('\n🤖 Agent Hustle Summary & Follow-up:'));
+          console.log(summaryResponse.content);
+        } catch (chatError) {
+          console.error(chalk.red('Could not get summary from Agent Hustle:'), chatError.message);
+          
+          // Fallback: show raw results
+          console.log(chalk.yellow('\n📊 Tool Results Summary:'));
+          toolResults.forEach(result => {
+            if (result.success) {
+              console.log(chalk.green(`✅ ${result.toolName}: Success`));
+            } else {
+              console.log(chalk.red(`❌ ${result.toolName}: ${result.error}`));
+            }
+          });
         }
       }
     }

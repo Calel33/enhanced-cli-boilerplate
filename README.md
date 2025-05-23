@@ -30,6 +30,7 @@ This is an enhanced CLI boilerplate that demonstrates integration between AgentH
 
 ## 📚 Documentation
 
+- **[Tool Flow Guide](TOOL_FLOW_GUIDE.md)**: Complete 6-step flow pattern for seamless AgentHustle integration
 - **[Quick Reference](QUICK_REFERENCE.md)**: 5-minute checklist for adding any Smithery tool
 - **[Smithery Integration Guide](SMITHERY_INTEGRATION_GUIDE.md)**: Complete guide for adding any Smithery tool to your project
 - **[Tool Template](templates/new-smithery-tool-template.js)**: Copy-paste template for quick tool integration
