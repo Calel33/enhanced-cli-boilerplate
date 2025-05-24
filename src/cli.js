@@ -443,6 +443,30 @@ async function handleChatMode(input) {
                 }
               }
               
+              // Display the actual tool response data to the user
+              console.log(chalk.white('\n📋 Tool Response Data:'));
+              console.log(chalk.gray('─'.repeat(50)));
+              
+              try {
+                // Format and display the tool response in a readable way
+                const formattedResult = JSON.stringify(toolResponse.data.result, null, 2);
+                
+                // Truncate very long responses for readability
+                if (formattedResult.length > 2000) {
+                  const truncated = formattedResult.substring(0, 2000);
+                  console.log(chalk.white(truncated));
+                  console.log(chalk.yellow('\n... (response truncated for readability)'));
+                  console.log(chalk.gray(`Full response: ${formattedResult.length} characters`));
+                } else {
+                  console.log(chalk.white(formattedResult));
+                }
+              } catch (jsonError) {
+                // Fallback for non-JSON responses
+                console.log(chalk.white(String(toolResponse.data.result)));
+              }
+              
+              console.log(chalk.gray('─'.repeat(50)));
+              
               // Collect successful result
               toolResults.push({
                 toolName: toolCall.name,

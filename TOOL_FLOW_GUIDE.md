@@ -7,6 +7,7 @@ This guide documents the complete flow pattern used in our enhanced CLI boilerpl
 Our tool integration follows a 6-step flow that ensures:
 - **Automatic tool selection** (Smithery preferred, local fallback)
 - **Transparent execution** with clear source indicators
+- **Raw tool response display** for user visibility
 - **AI-powered summarization** of results
 - **Interactive follow-up** suggestions
 - **Graceful error handling** with AI guidance
@@ -54,7 +55,7 @@ try {
   if (toolResponse.data && toolResponse.data.success) {
     console.log(chalk.green('✅ Tool executed successfully'));
     
-    // 3. Show brief result summary (customize based on your tool's output)
+    // 3. Show brief result summary (customize based on your tool's output format)
     if (toolResponse.data.result) {
       const result = toolResponse.data.result;
       // Customize this section for your tool's specific output format
@@ -66,6 +67,30 @@ try {
         console.log(chalk.cyan(`💬 Response: ${result.response.substring(0, 100)}...`));
       }
     }
+    
+    // 4. Display the actual tool response data to the user
+    console.log(chalk.white('\n📋 Tool Response Data:'));
+    console.log(chalk.gray('─'.repeat(50)));
+    
+    try {
+      // Format and display the tool response in a readable way
+      const formattedResult = JSON.stringify(toolResponse.data.result, null, 2);
+      
+      // Truncate very long responses for readability
+      if (formattedResult.length > 2000) {
+        const truncated = formattedResult.substring(0, 2000);
+        console.log(chalk.white(truncated));
+        console.log(chalk.yellow('\n... (response truncated for readability)'));
+        console.log(chalk.gray(`Full response: ${formattedResult.length} characters`));
+      } else {
+        console.log(chalk.white(formattedResult));
+      }
+    } catch (jsonError) {
+      // Fallback for non-JSON responses
+      console.log(chalk.white(String(toolResponse.data.result)));
+    }
+    
+    console.log(chalk.gray('─'.repeat(50)));
     
     // Collect successful result
     toolResults.push({
@@ -96,7 +121,7 @@ try {
   });
 }
 
-// 4. After ALL tools are executed, send single summarization request
+// 5. After ALL tools are executed, send single summarization request
 if (toolResults.length > 0) {
   console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze all results...'));
   
@@ -181,6 +206,30 @@ try {
       }
     }
     
+    // 4. Display the actual tool response data to the user
+    console.log(chalk.white('\n📋 Tool Response Data:'));
+    console.log(chalk.gray('─'.repeat(50)));
+    
+    try {
+      // Format and display the tool response in a readable way
+      const formattedResult = JSON.stringify(toolResponse.data.result, null, 2);
+      
+      // Truncate very long responses for readability
+      if (formattedResult.length > 2000) {
+        const truncated = formattedResult.substring(0, 2000);
+        console.log(chalk.white(truncated));
+        console.log(chalk.yellow('\n... (response truncated for readability)'));
+        console.log(chalk.gray(`Full response: ${formattedResult.length} characters`));
+      } else {
+        console.log(chalk.white(formattedResult));
+      }
+    } catch (jsonError) {
+      // Fallback for non-JSON responses
+      console.log(chalk.white(String(toolResponse.data.result)));
+    }
+    
+    console.log(chalk.gray('─'.repeat(50)));
+    
     // Collect successful result
     toolResults.push({
       toolName: toolCall.name,
@@ -210,7 +259,7 @@ try {
   });
 }
 
-// 4. After ALL tools are executed, send single summarization request
+// 5. After ALL tools are executed, send single summarization request
 if (toolResults.length > 0) {
   console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze all results...'));
   
@@ -304,6 +353,7 @@ if (result.address && result.balance) {
 - User doesn't need to know which implementation is being used
 - Consistent interface regardless of tool source
 - Clear visual indicators for transparency
+- **Raw tool data visibility** for complete transparency
 
 ### 2. **Intelligent Tool Selection**
 - Automatically prefers Smithery (hosted, no API key management)
@@ -332,6 +382,7 @@ When adding a new tool, ensure you implement:
 - [ ] **Tool name mapping** in `parseToolCalls()` function
 - [ ] **Source indicator** display (🌐 Smithery or 📦 Local)
 - [ ] **Tool-specific result summary** for immediate feedback
+- [ ] **Raw tool response display** for user visibility
 - [ ] **AgentHustle summarization** with proper prompt formatting
 - [ ] **Error handling** with AI guidance fallback
 - [ ] **Consistent visual styling** using chalk colors
@@ -345,7 +396,13 @@ When adding a new tool, ensure you implement:
 - Use appropriate emojis for visual clarity
 - Show the most important information first
 
-### 2. **AgentHustle Prompt Format**
+### 2. **Tool Response Display**
+- Always show the raw tool response to users
+- Truncate very long responses (>2000 chars) for readability
+- Use consistent formatting with separators
+- Handle both JSON and non-JSON responses gracefully
+
+### 3. **AgentHustle Prompt Format**
 ```javascript
 const followUpPrompt = `The ${toolCall.name} tool has returned the following data based on the request:
 
@@ -356,256 +413,27 @@ ${resultsString}
 Please summarize this data for the user and then ask if they would like to do anything further with it.`;
 ```
 
-### 3. **Error Handling**
+### 4. **Error Handling**
 - Always provide AI guidance for errors
 - Include specific error details in prompts
 - Maintain conversation flow even during failures
 - Suggest alternative approaches when possible
 
-### 4. **Visual Consistency**
+### 5. **Visual Consistency**
 - Use `chalk.blue()` for tool execution messages
 - Use `chalk.green()` for success indicators
 - Use `chalk.cyan()` for result summaries
+- Use `chalk.white()` for raw tool response data
+- Use `chalk.gray()` for separators and metadata
 - Use `chalk.magentaBright()` for AgentHustle responses
 - Use `chalk.red()` for errors
 - Use `chalk.yellow()` for processing messages
 
-## 🚀 Example: Complete Weather Tool Integration
-
-```javascript
-// In parseToolCalls function
-if (toolName === 'weather_forecast' || toolName === 'weather-forecast') {
-  const smitheryTool = availableTools.find(t => t.name === 'weather_forecast');
-  const localTool = availableTools.find(t => t.name === 'weather-forecast');
-  mappedToolName = smitheryTool ? 'weather_forecast' : (localTool ? 'weather-forecast' : toolName);
-}
-
-// In handleChatMode function
-const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
-console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
-
-try {
-  const toolResponse = await axios.post(`${MCP_SERVER_URL}/api/tools/call`, {
-    name: toolCall.name,
-    params: toolCall.arguments
-  });
-  
-  if (toolResponse.data && toolResponse.data.success) {
-    console.log(chalk.green('\n✅ Tool executed successfully'));
-    
-    // Weather-specific result summary
-    if (toolResponse.data.result) {
-      const result = toolResponse.data.result;
-      if (result.location && result.weather) {
-        console.log(chalk.cyan(`🌤️ ${result.location}: ${result.weather.temperature}°F, ${result.weather.conditions}`));
-      }
-    }
-    
-    // Send to AgentHustle for summarization
-    console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze the results...'));
-    const resultsString = JSON.stringify(toolResponse.data.result, null, 2);
-    const followUpPrompt = `The ${toolCall.name} tool has returned the following weather data:
-
-\`\`\`json
-${resultsString}
-\`\`\`
-
-Please summarize this weather information for the user and ask if they would like to do anything further with it.`;
-    
-    const summaryResponse = await client.chat([
-      { role: 'user', content: followUpPrompt }
-    ], { vaultId });
-    
-    console.log(chalk.magentaBright('\n🤖 Agent Hustle Summary & Follow-up:'));
-    console.log(summaryResponse.content);
-  }
-} catch (error) {
-  console.error(chalk.red(`\n❌ Error using ${toolCall.name}:`), error.message);
-  
-  const errorPrompt = `The weather forecast tool failed with error: ${error.message}. Please inform the user and suggest alternative ways to get weather information.`;
-  
-  try {
-    const errorResponse = await client.chat([
-      { role: 'user', content: errorPrompt }
-    ], { vaultId });
-    
-    console.log(chalk.magentaBright('\n🤖 Agent Hustle Error Guidance:'));
-    console.log(errorResponse.content);
-  } catch (chatError) {
-    console.error(chalk.red('Could not get guidance from Agent Hustle:'), chatError.message);
-  }
-}
-```
-
-## 🔗 Example: Complete Ordiscan Bitcoin Tools Integration
-
-Our Ordiscan tools **already follow the exact same flow pattern** as Brave Search! Here's how they work:
-
-### 1. **Rune Market Tool Example**
-
-**User Query:**
-```
-[chat]> What's the current market data for DOGGOTOTHEMOON rune?
-```
-
-**AgentHustle Tool Call:**
-```xml
-<tool>ordiscan_rune_market({
-  name: "DOGGOTOTHEMOON"
-})</tool>
-```
-
-**Complete Flow Implementation:**
-```javascript
-// 1. Tool Detection & Mapping (already implemented)
-else if (toolName.startsWith('ordiscan_') || toolName.includes('ordiscan')) {
-  const ordiscanTool = availableTools.find(t => t.name === toolName);
-  mappedToolName = ordiscanTool ? toolName : toolName;
-}
-
-// 2. Tool Execution with Source Indicator (FIXED: now shows Smithery correctly)
-const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
-console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
-
-try {
-  const toolResponse = await axios.post(`${MCP_SERVER_URL}/api/tools/call`, {
-    name: 'ordiscan_rune_market',
-    params: { name: "DOGGOTOTHEMOON" }
-  });
-  
-  if (toolResponse.data && toolResponse.data.success) {
-    console.log(chalk.green('✅ Tool executed successfully'));
-    
-    // 3. Ordiscan-specific result summary (already implemented)
-    const result = toolResponse.data.result;
-    if (result.rune) {
-      console.log(chalk.cyan(`🔮 Rune: ${result.rune}`));
-    } else if (toolCall.name.includes('market')) {
-      console.log(chalk.cyan(`💰 Market data retrieved for rune`));
-    }
-    
-    // 4. Send to AgentHustle for summarization (already implemented)
-    console.log(chalk.yellow('\n🤖 Asking Agent Hustle to analyze the results...'));
-    const resultsString = JSON.stringify(result, null, 2);
-    const followUpPrompt = `The ordiscan_rune_market tool has returned the following rune market data:
-
-\`\`\`json
-${resultsString}
-\`\`\`
-
-Please summarize this market information for the user and ask if they would like to do anything further with it.`;
-    
-    const summaryResponse = await client.chat([
-      { role: 'user', content: followUpPrompt }
-    ], { vaultId });
-    
-    // 5. Display AI summary and follow-up (already implemented)
-    console.log(chalk.magentaBright('\n🤖 Agent Hustle Summary & Follow-up:'));
-    console.log(summaryResponse.content);
-  }
-} catch (error) {
-  // Error handling with AI guidance (already implemented)
-  const errorPrompt = `The ordiscan_rune_market tool failed with error: ${error.message}. Please inform the user and suggest alternative ways to get rune market information.`;
-  
-  const errorResponse = await client.chat([
-    { role: 'user', content: errorPrompt }
-  ], { vaultId });
-  
-  console.log(chalk.magentaBright('\n🤖 Agent Hustle Error Guidance:'));
-  console.log(errorResponse.content);
-}
-```
-
-### 2. **All 29 Ordiscan Tools Follow This Pattern**
-
-**BRC-20 Token Example:**
-```
-User: "What BRC-20 tokens are trending?"
-AgentHustle: <tool>ordiscan_brc20_list({sort: "newest", page: "1"})</tool>
-Result Summary: 📋 BRC-20 token list retrieved
-```
-
-**Address Balance Example:**
-```
-User: "What Bitcoin ordinals does this address own: bc1p5cyxn..."
-AgentHustle: <tool>ordiscan_address_inscriptions({address: "bc1p5cyxn..."})</tool>
-Result Summary: 🏠 Bitcoin address: bc1p5cyxn...
-```
-
-**Inscription Info Example:**
-```
-User: "Tell me about inscription #12345"
-AgentHustle: <tool>ordiscan_inscription_info({id: "12345"})</tool>
-Result Summary: 🖼️ Inscription: 12345
-```
-
-### 3. **Function Call Mapping Support**
-
-Your requested function call format is **already supported**! AgentHustle can use any of these formats:
-
-**Standard Tool Format:**
-```xml
-<tool>ordiscan_rune_market({
-  name: "DOGGOTOTHEMOON",
-  apiKey: "your-api-key"
-})</tool>
-```
-
-**Function Call Format (also works):**
-```xml
-<function_calls>
-  <invoke name="ordiscan_rune_market" call_id="1">
-    <parameter name="name">DOGGOTOTHEMOON</parameter>
-    <parameter name="apiKey">your-api-key</parameter>
-  </invoke>
-</function_calls>
-```
-
-Both formats are parsed and executed identically through our flow!
-
-### 4. **Complete Tool Coverage**
-
-All 29 Ordiscan tools follow this exact pattern:
-
-**🔮 Runes Tools:**
-- `ordiscan_rune_market` - Market data with price/cap
-- `ordiscan_runes_list` - Paginated runes list
-- `ordiscan_address_runes` - Rune balances for addresses
-- `ordiscan_runes_activity` - Rune transfer activity
-
-**🪙 BRC-20 Tools:**
-- `ordiscan_brc20_list` - Token list with pagination
-- `ordiscan_brc20_info` - Detailed token information
-- `ordiscan_address_brc20` - Token balances for addresses
-
-**🖼️ Inscription Tools:**
-- `ordiscan_inscription_info` - Detailed inscription data
-- `ordiscan_address_inscriptions` - All inscriptions for address
-- `ordiscan_inscription_transfers` - Transfer history
-
-**And 20 more tools** - all following the same seamless flow pattern!
-
-### 5. **Enhanced Result Summaries**
-
-We've implemented specific result summaries for each tool type:
-
-```javascript
-// Tool-specific summaries based on Ordiscan tool type
-if (toolCall.name.includes('market')) {
-  console.log(chalk.cyan(`💰 Market data retrieved for rune`));
-} else if (toolCall.name.includes('brc20_list')) {
-  console.log(chalk.cyan(`📋 BRC-20 token list retrieved`));
-} else if (toolCall.name.includes('runes_list')) {
-  console.log(chalk.cyan(`🔮 Runes list retrieved`));
-} else if (toolCall.name.includes('balance') || toolCall.name.includes('address')) {
-  console.log(chalk.cyan(`💼 Address data retrieved`));
-}
-```
-
 ## 🎉 Conclusion
 
-This flow pattern ensures that every tool integration provides:
+This enhanced 6-step flow pattern ensures that every tool integration provides:
 - **Consistent user experience** across all tools
+- **Complete transparency** with raw tool response visibility
 - **Intelligent AI enhancement** of tool results
 - **Graceful error handling** with helpful guidance
 - **Clear visual feedback** throughout the process
@@ -619,4 +447,4 @@ By following this pattern, any tool (whether Smithery-hosted or local) will inte
 - [Smithery Integration Guide](SMITHERY_INTEGRATION_GUIDE.md) - How to add Smithery tools
 - [Quick Reference](QUICK_REFERENCE.md) - 5-minute integration checklist
 - [Tool Templates](templates/) - Copy-paste templates for quick integration
-- [Examples](examples/) - Working examples of tool integrations 
+- [Examples](examples/) - Working examples of tool integrations
