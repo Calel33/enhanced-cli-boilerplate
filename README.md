@@ -164,6 +164,71 @@ This boilerplate includes **29 specialized Bitcoin tools** via the Ordiscan MCP 
 
 All these tools work seamlessly with AgentHustle AI - just ask natural language questions about Bitcoin ordinals, and the AI will automatically select and use the appropriate tools!
 
+## 📈 Stock Analysis Tools Integration
+
+This boilerplate includes **3 powerful stock analysis tools** via the Alpha Vantage MCP integration:
+
+### 💹 Real-Time Market Data
+- `get-stock-data`: Get real-time stock market data including current price, volume, and market metrics
+- `get-daily-stock-data`: Get historical daily stock data with customizable time periods
+- `get-stock-alerts`: Generate intelligent stock alerts based on price movements and thresholds
+
+### 🎯 Stock Analysis Examples
+
+**Real-Time Stock Queries**:
+```
+[chat]> What is the current stock price of Apple?
+[chat]> Show me Tesla's stock performance today
+[chat]> Get me the latest market data for Microsoft
+```
+
+**Historical Data Analysis**:
+```
+[chat]> Show me Apple's stock performance over the last 30 days
+[chat]> Get daily stock data for NVIDIA for the past week
+[chat]> What was Tesla's stock trend last month?
+```
+
+**Stock Alerts & Monitoring**:
+```
+[chat]> Set up stock alerts for Amazon with a 5% threshold
+[chat]> Create price alerts for Google stock
+[chat]> Monitor Microsoft for significant price changes
+```
+
+### 🔑 Alpha Vantage API Key Setup
+
+To use stock analysis tools, you'll need a free Alpha Vantage API key:
+
+1. Visit [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+2. Sign up for a free account
+3. Get your API key
+4. Add it to your `.env` file:
+```env
+ALPHA_VANTAGE_API_KEY=your-alpha-vantage-api-key
+```
+
+**Free Tier Limits**: 
+- 5 API requests per minute
+- 500 requests per day
+- Perfect for testing and light usage
+
+### 🧪 Testing Stock Analysis
+
+Test your stock analysis integration:
+```bash
+node test-stock-analysis.js
+```
+
+This will verify:
+- ✅ Alpha Vantage API key configuration
+- ✅ MCP server connectivity  
+- ✅ All 3 stock analysis tools functionality
+- ✅ Both hyphen and underscore naming conventions
+- ✅ Error handling and response parsing
+
+All stock analysis tools work seamlessly with AgentHustle AI - just ask natural language questions about stocks, and the AI will automatically select and use the appropriate tools!
+
 ## Smithery vs Local Tools
 
 - **Smithery Tools** (Preferred): Hosted on Smithery's infrastructure, no API key management required

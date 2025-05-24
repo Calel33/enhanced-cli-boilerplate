@@ -151,6 +151,7 @@ async function handleCommand(input) {
         const localTools = availableTools.filter(t => !t.source || t.source === 'local');
         const smitheryTools = availableTools.filter(t => t.source === 'smithery');
         const ordiscanTools = availableTools.filter(t => t.source === 'ordiscan');
+        const stockAnalysisTools = availableTools.filter(t => t.source === 'stock-analysis');
         
         if (localTools.length > 0) {
           console.log(chalk.blue('\n📦 Local Tools:'));
@@ -169,6 +170,13 @@ async function handleCommand(input) {
         if (ordiscanTools.length > 0) {
           console.log(chalk.cyan('\n🔗 Ordiscan Bitcoin Tools:'));
           ordiscanTools.forEach(tool => {
+            console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
+          });
+        }
+        
+        if (stockAnalysisTools.length > 0) {
+          console.log(chalk.green('\n📈 Stock Analysis Tools:'));
+          stockAnalysisTools.forEach(tool => {
             console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
           });
         }
@@ -273,6 +281,23 @@ function parseToolCalls(content) {
               mappedToolName = `ordiscan_${toolName}`;
             }
           }
+        } else if (toolName.includes('stock') || toolName.includes('get-stock') || toolName.includes('get_stock')) {
+          // Handle Stock Analysis tool names - support both hyphen and underscore formats
+          const hyphenName = toolName.replace(/_/g, '-');
+          const underscoreName = toolName.replace(/-/g, '_');
+          
+          const hyphenTool = availableTools.find(t => t.name === hyphenName);
+          const underscoreTool = availableTools.find(t => t.name === underscoreName);
+          
+          // Prefer the format that exists in available tools
+          if (hyphenTool) {
+            mappedToolName = hyphenName;
+          } else if (underscoreTool) {
+            mappedToolName = underscoreName;
+          } else {
+            // Default to hyphen format for Smithery compatibility
+            mappedToolName = hyphenName;
+          }
         }
         
         return {
@@ -313,7 +338,7 @@ async function handleChatMode(input) {
         const tool = availableTools.find(t => t.name === toolCall.name);
         
         if (tool) {
-          const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan') ? '🌐 Smithery' : '📦 Local';
+          const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
           console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
           
           try {
@@ -361,11 +386,59 @@ async function handleChatMode(input) {
                       console.log(chalk.cyan(`🔮 Runes list retrieved`));
                     } else if (toolCall.name.includes('balance') || toolCall.name.includes('address')) {
                       console.log(chalk.cyan(`💼 Address data retrieved`));
+                    } else if (result.source === 'stock-analysis') {
+                      // Handle Stock Analysis-specific result summaries
+                      if (result.symbol) {
+                        if (toolCall.name.includes('stock-data') || toolCall.name.includes('daily')) {
+                          console.log(chalk.cyan(`📈 Stock data for ${result.symbol}`));
+                        } else if (toolCall.name.includes('alerts')) {
+                          console.log(chalk.cyan(`🚨 Stock alerts for ${result.symbol}`));
+                        } else {
+                          console.log(chalk.cyan(`💹 Stock analysis for ${result.symbol}`));
+                        }
+                      } else if (result.data && typeof result.data === 'object') {
+                        // More specific summaries based on tool type
+                        if (toolCall.name.includes('stock-data')) {
+                          console.log(chalk.cyan(`📊 Real-time stock data retrieved`));
+                        } else if (toolCall.name.includes('daily')) {
+                          console.log(chalk.cyan(`📅 Daily stock data retrieved`));
+                        } else if (toolCall.name.includes('alerts')) {
+                          console.log(chalk.cyan(`🔔 Stock alerts generated`));
+                        } else {
+                          console.log(chalk.cyan(`✅ Stock analysis completed`));
+                        }
+                      } else {
+                        console.log(chalk.cyan(`✅ Stock analysis completed`));
+                      }
                     } else {
                       console.log(chalk.cyan(`✅ Ordiscan data retrieved successfully`));
                     }
                   } else {
                     console.log(chalk.cyan(`✅ Ordiscan data retrieved successfully`));
+                  }
+                } else if (result.source === 'stock-analysis') {
+                  // Handle Stock Analysis-specific result summaries
+                  if (result.symbol) {
+                    if (toolCall.name.includes('stock-data') || toolCall.name.includes('daily')) {
+                      console.log(chalk.cyan(`📈 Stock data for ${result.symbol}`));
+                    } else if (toolCall.name.includes('alerts')) {
+                      console.log(chalk.cyan(`🚨 Stock alerts for ${result.symbol}`));
+                    } else {
+                      console.log(chalk.cyan(`💹 Stock analysis for ${result.symbol}`));
+                    }
+                  } else if (result.data && typeof result.data === 'object') {
+                    // More specific summaries based on tool type
+                    if (toolCall.name.includes('stock-data')) {
+                      console.log(chalk.cyan(`📊 Real-time stock data retrieved`));
+                    } else if (toolCall.name.includes('daily')) {
+                      console.log(chalk.cyan(`📅 Daily stock data retrieved`));
+                    } else if (toolCall.name.includes('alerts')) {
+                      console.log(chalk.cyan(`🔔 Stock alerts generated`));
+                    } else {
+                      console.log(chalk.cyan(`✅ Stock analysis completed`));
+                    }
+                  } else {
+                    console.log(chalk.cyan(`✅ Stock analysis completed`));
                   }
                 }
               }

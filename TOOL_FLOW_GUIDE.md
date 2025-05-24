@@ -37,7 +37,7 @@ if (toolName === 'brave_web_search' || toolName === 'brave-search') {
 ### Step 3: Tool Execution with Source Indicator
 ```javascript
 // Shows clear source indicator to user
-const toolSource = tool.source === 'smithery' ? '🌐 Smithery' : '📦 Local';
+const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
 console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
 
 // Collect all tool results first
@@ -151,7 +151,7 @@ if (toolName === 'your_tool_name' || toolName === 'your-tool-name') {
 }
 
 // 2. Tool Execution (add to handleChatMode function)
-const toolSource = tool.source === 'smithery' ? '🌐 Smithery' : '📦 Local';
+const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
 console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
 
 // Collect all tool results first
@@ -381,7 +381,7 @@ if (toolName === 'weather_forecast' || toolName === 'weather-forecast') {
 }
 
 // In handleChatMode function
-const toolSource = tool.source === 'smithery' ? '🌐 Smithery' : '📦 Local';
+const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
 console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
 
 try {
@@ -464,7 +464,7 @@ else if (toolName.startsWith('ordiscan_') || toolName.includes('ordiscan')) {
 }
 
 // 2. Tool Execution with Source Indicator (FIXED: now shows Smithery correctly)
-const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan') ? '🌐 Smithery' : '📦 Local';
+const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan' || tool.source === 'stock-analysis') ? '🌐 Smithery' : '📦 Local';
 console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
 
 try {

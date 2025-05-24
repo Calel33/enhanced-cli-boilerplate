@@ -30,6 +30,10 @@ function checkOptionalApiKeys() {
     warnings.push('⚠ ORDISCAN_API_KEY not configured - Bitcoin ordinals tools will be unavailable');
   }
   
+  if (!process.env.ALPHA_VANTAGE_API_KEY) {
+    warnings.push('⚠ ALPHA_VANTAGE_API_KEY not configured - stock analysis tools will be unavailable');
+  }
+  
   if (!process.env.BRAVE_API_KEY) {
     warnings.push('⚠ BRAVE_API_KEY not configured - local search fallback will be unavailable');
   }
@@ -72,9 +76,20 @@ if (process.env.ORDISCAN_API_KEY) {
   });
 }
 
+// Initialize Smithery client for Stock Analysis (Alpha Vantage)
+let stockAnalysisClient = null;
+if (process.env.ALPHA_VANTAGE_API_KEY) {
+  stockAnalysisClient = new SmitheryClient({
+    baseUrl: `https://server.smithery.ai/@qubaomingg/stock-analysis-mcp/mcp?api_key=${process.env.ALPHA_VANTAGE_API_KEY}&profile=${process.env.SMITHERY_PROFILE || 'glad-squid-LrsVYY'}`,
+    apiKey: process.env.SMITHERY_API_KEY,
+    profile: process.env.SMITHERY_PROFILE
+  });
+}
+
 // Initialize Smithery connections on startup
 let smitheryConnected = false;
 let ordiscanConnected = false;
+let stockAnalysisConnected = false;
 
 async function initializeSmithery() {
   if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
@@ -131,9 +146,43 @@ async function initializeOrdiscan() {
   }
 }
 
+async function initializeStockAnalysis() {
+  if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
+    console.log('⚠ Smithery credentials not configured, skipping Stock Analysis integration');
+    return false;
+  }
+
+  if (!process.env.ALPHA_VANTAGE_API_KEY) {
+    console.log('⚠ ALPHA_VANTAGE_API_KEY not configured, skipping Stock Analysis integration');
+    console.log('  Please set ALPHA_VANTAGE_API_KEY in your .env file to use stock analysis tools');
+    return false;
+  }
+
+  if (!stockAnalysisClient) {
+    console.log('⚠ Stock Analysis client not initialized, skipping Stock Analysis integration');
+    return false;
+  }
+
+  try {
+    const success = await stockAnalysisClient.initialize();
+    stockAnalysisConnected = success;
+    if (success) {
+      console.log('✓ Stock Analysis MCP integration ready');
+    } else {
+      console.log('⚠ Stock Analysis connection failed');
+    }
+    return success;
+  } catch (error) {
+    console.error('Error initializing Stock Analysis:', error.message);
+    stockAnalysisConnected = false;
+    return false;
+  }
+}
+
 // Initialize on startup - await the results
 await initializeSmithery();
 await initializeOrdiscan();
+await initializeStockAnalysis();
 
 /**
  * Brave Search API client
@@ -294,6 +343,28 @@ app.post('/api/tools/list', async (req, res) => {
       // Try to reconnect for next time
       ordiscanConnected = false;
       console.log('⚠ Marking Ordiscan as disconnected, will attempt reconnection on next tool call');
+    }
+  }
+
+  // Add Stock Analysis tools if connected
+  if (stockAnalysisConnected && stockAnalysisClient.isAvailable()) {
+    try {
+      const stockTools = await stockAnalysisClient.listTools();
+      // Add Stock Analysis tools to our tools list
+      stockTools.forEach(tool => {
+        tools.push({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema,
+          source: 'stock-analysis' // Mark as Stock Analysis tool for identification
+        });
+      });
+      console.log(`✓ Added ${stockTools.length} Stock Analysis tools to the list`);
+    } catch (error) {
+      console.error('Error fetching Stock Analysis tools:', error.message);
+      // Try to reconnect for next time
+      stockAnalysisConnected = false;
+      console.log('⚠ Marking Stock Analysis as disconnected, will attempt reconnection on next tool call');
     }
   }
 
@@ -718,6 +789,76 @@ app.post('/api/tools/call', async (req, res) => {
         }
         break;
 
+      // Stock Analysis tools - Handle Alpha Vantage stock analysis tools
+      case 'get-stock-data':
+      case 'get_stock_data':
+      case 'get-stock-alerts':
+      case 'get_stock_alerts':
+      case 'get-daily-stock-data':
+      case 'get_daily_stock_data':
+        if (stockAnalysisConnected || await initializeStockAnalysis()) {
+          console.log(`Executing Stock Analysis ${name} with params:`, params);
+          try {
+            // Add API key to params if available
+            const stockParams = { ...params };
+            if (process.env.ALPHA_VANTAGE_API_KEY) {
+              stockParams.alphaVantageApiKey = process.env.ALPHA_VANTAGE_API_KEY;
+              console.log(`✓ Adding Alpha Vantage API key to request: ${process.env.ALPHA_VANTAGE_API_KEY.substring(0, 8)}...`);
+            } else {
+              throw new Error('ALPHA_VANTAGE_API_KEY environment variable is required but not set');
+            }
+            
+            // Normalize tool name for Smithery (use hyphen format)
+            const normalizedName = name.replace(/_/g, '-');
+            const stockResult = await stockAnalysisClient.callTool(normalizedName, stockParams);
+            
+            // Parse the result from Stock Analysis
+            // Reason: Stock analysis returns structured data, usually as JSON text
+            let parsedData = {};
+            if (stockResult.content && stockResult.content[0] && stockResult.content[0].text) {
+              const text = stockResult.content[0].text;
+              try {
+                // Try to parse as JSON first
+                parsedData = JSON.parse(text);
+              } catch (jsonError) {
+                // If not JSON, return as text
+                parsedData = { data: text };
+              }
+            }
+            
+            // Format the result consistently based on tool type
+            if (name.includes('stock-data') || name.includes('daily')) {
+              result = {
+                symbol: params.symbol,
+                data: parsedData,
+                tool: name,
+                source: 'stock-analysis'
+              };
+            } else if (name.includes('alerts')) {
+              result = {
+                symbol: params.symbol,
+                alerts: parsedData,
+                tool: name,
+                source: 'stock-analysis'
+              };
+            } else {
+              // Generic format for other stock tools
+              result = {
+                data: parsedData,
+                tool: name,
+                source: 'stock-analysis'
+              };
+            }
+          } catch (error) {
+            console.error(`Error in Stock Analysis ${name}:`, error);
+            stockAnalysisConnected = false; // Mark as disconnected
+            throw new Error(`Stock Analysis ${name} failed: ${error.message}`);
+          }
+        } else {
+          throw new Error(`${name} not available - no Stock Analysis connection`);
+        }
+        break;
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -770,6 +911,14 @@ app.listen(port, () => {
     console.log('- And 23 more Bitcoin ordinals, inscriptions, BRC-20, and runes tools...');
   }
   
+  if (stockAnalysisConnected) {
+    console.log('\n📈 Stock Analysis Tools (3 tools available):');
+    console.log('- get-stock-data: Get real-time stock market data');
+    console.log('- get-stock-alerts: Generate stock alerts based on price movements');
+    console.log('- get-daily-stock-data: Get daily historical stock data');
+  }
+  
   console.log(`\nSmithery Integration: ${smitheryConnected ? '✓ Connected' : '✗ Not connected'}`);
   console.log(`Ordiscan Integration: ${ordiscanConnected ? '✓ Connected' : '✗ Not connected'}`);
+  console.log(`Stock Analysis Integration: ${stockAnalysisConnected ? '✓ Connected' : '✗ Not connected'}`);
 }); 
