@@ -18,6 +18,30 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
+// Warn about missing optional API keys
+function checkOptionalApiKeys() {
+  const warnings = [];
+  
+  if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
+    warnings.push('⚠ Smithery credentials not configured - hosted tools will be unavailable');
+  }
+  
+  if (!process.env.ORDISCAN_API_KEY) {
+    warnings.push('⚠ ORDISCAN_API_KEY not configured - Bitcoin ordinals tools will be unavailable');
+  }
+  
+  if (!process.env.BRAVE_API_KEY) {
+    warnings.push('⚠ BRAVE_API_KEY not configured - local search fallback will be unavailable');
+  }
+  
+  if (warnings.length > 0) {
+    console.log('\n' + warnings.join('\n'));
+    console.log('\nTo enable all features, please configure the missing API keys in your .env file\n');
+  }
+}
+
+checkOptionalApiKeys();
+
 // Create Express app
 const app = express();
 app.use(express.json());
@@ -38,8 +62,20 @@ const smitheryClient = new SmitheryClient({
   profile: process.env.SMITHERY_PROFILE
 });
 
-// Initialize Smithery connection on startup
+// Initialize Smithery client for Ordiscan (only if API key is available)
+let ordiscanClient = null;
+if (process.env.ORDISCAN_API_KEY) {
+  ordiscanClient = new SmitheryClient({
+    baseUrl: `https://server.smithery.ai/@Calel33/ordiscan-mcp-v1/mcp?api_key=${process.env.ORDISCAN_API_KEY}`,
+    apiKey: process.env.SMITHERY_API_KEY,
+    profile: process.env.SMITHERY_PROFILE
+  });
+}
+
+// Initialize Smithery connections on startup
 let smitheryConnected = false;
+let ordiscanConnected = false;
+
 async function initializeSmithery() {
   if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
     console.log('⚠ Smithery credentials not configured, skipping Smithery integration');
@@ -62,8 +98,42 @@ async function initializeSmithery() {
   }
 }
 
-// Initialize on startup - await the result
+async function initializeOrdiscan() {
+  if (!process.env.SMITHERY_API_KEY || !process.env.SMITHERY_PROFILE) {
+    console.log('⚠ Smithery credentials not configured, skipping Ordiscan integration');
+    return false;
+  }
+
+  if (!process.env.ORDISCAN_API_KEY) {
+    console.log('⚠ ORDISCAN_API_KEY not configured, skipping Ordiscan integration');
+    console.log('  Please set ORDISCAN_API_KEY in your .env file to use Ordiscan tools');
+    return false;
+  }
+
+  if (!ordiscanClient) {
+    console.log('⚠ Ordiscan client not initialized, skipping Ordiscan integration');
+    return false;
+  }
+
+  try {
+    const success = await ordiscanClient.initialize();
+    ordiscanConnected = success;
+    if (success) {
+      console.log('✓ Ordiscan MCP integration ready');
+    } else {
+      console.log('⚠ Ordiscan connection failed');
+    }
+    return success;
+  } catch (error) {
+    console.error('Error initializing Ordiscan:', error.message);
+    ordiscanConnected = false;
+    return false;
+  }
+}
+
+// Initialize on startup - await the results
 await initializeSmithery();
+await initializeOrdiscan();
 
 /**
  * Brave Search API client
@@ -202,6 +272,28 @@ app.post('/api/tools/list', async (req, res) => {
       // Try to reconnect for next time
       smitheryConnected = false;
       console.log('⚠ Marking Smithery as disconnected, will attempt reconnection on next tool call');
+    }
+  }
+
+  // Add Ordiscan tools if connected
+  if (ordiscanConnected && ordiscanClient.isAvailable()) {
+    try {
+      const ordiscanTools = await ordiscanClient.listTools();
+      // Add Ordiscan tools to our tools list
+      ordiscanTools.forEach(tool => {
+        tools.push({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema,
+          source: 'ordiscan' // Mark as Ordiscan tool for identification
+        });
+      });
+      console.log(`✓ Added ${ordiscanTools.length} Ordiscan tools to the list`);
+    } catch (error) {
+      console.error('Error fetching Ordiscan tools:', error.message);
+      // Try to reconnect for next time
+      ordiscanConnected = false;
+      console.log('⚠ Marking Ordiscan as disconnected, will attempt reconnection on next tool call');
     }
   }
 
@@ -493,6 +585,139 @@ app.post('/api/tools/call', async (req, res) => {
         }
         break;
 
+      // Ordiscan tools - Handle all 29 Ordiscan MCP tools
+      case 'ordiscan_address_brc20_activity':
+      case 'ordiscan_address_brc20':
+      case 'ordiscan_brc20_info':
+      case 'ordiscan_brc20_list':
+      case 'ordiscan_collection_info':
+      case 'ordiscan_collection_inscriptions':
+      case 'ordiscan_collections_list':
+      case 'ordiscan_inscription_info':
+      case 'ordiscan_inscription_traits':
+      case 'ordiscan_inscription_transfers':
+      case 'ordiscan_inscriptions_activity':
+      case 'ordiscan_inscriptions_detail':
+      case 'ordiscan_inscriptions_list':
+      case 'ordiscan_address_inscriptions':
+      case 'ordiscan_address_rare_sats':
+      case 'ordiscan_rune_market':
+      case 'ordiscan_rune_name_unlock':
+      case 'ordiscan_runes_activity':
+      case 'ordiscan_address_runes':
+      case 'ordiscan_runes_list':
+      case 'ordiscan_sat_info':
+      case 'ordiscan_tx_info':
+      case 'ordiscan_tx_inscription_transfers':
+      case 'ordiscan_tx_inscriptions':
+      case 'ordiscan_tx_runes':
+      case 'ordiscan_utxo_rare_sats':
+      case 'ordiscan_utxo_sat_ranges':
+      case 'ordiscan_address_utxos':
+      case 'ordiscan_main':
+        if (ordiscanConnected || await initializeOrdiscan()) {
+          console.log(`Executing Ordiscan ${name} with params:`, params);
+          try {
+            // Add API key to params if available
+            const ordiscanParams = { ...params };
+            if (process.env.ORDISCAN_API_KEY) {
+              ordiscanParams.apiKey = process.env.ORDISCAN_API_KEY;
+              console.log(`✓ Adding API key to Ordiscan request: ${process.env.ORDISCAN_API_KEY.substring(0, 8)}...`);
+            } else {
+              throw new Error('ORDISCAN_API_KEY environment variable is required but not set');
+            }
+            
+            const ordiscanResult = await ordiscanClient.callTool(name, ordiscanParams);
+            
+            // Parse the result from Ordiscan
+            // Reason: Ordiscan returns structured data, usually as JSON text
+            let parsedData = {};
+            if (ordiscanResult.content && ordiscanResult.content[0] && ordiscanResult.content[0].text) {
+              const text = ordiscanResult.content[0].text;
+              try {
+                // Try to parse as JSON first
+                parsedData = JSON.parse(text);
+              } catch (jsonError) {
+                // If not JSON, return as text
+                parsedData = { data: text };
+              }
+            }
+            
+            // Format the result consistently based on tool type
+            if (name.includes('address')) {
+              result = {
+                address: params.address,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('inscription')) {
+              result = {
+                inscription: params.id || params.number,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('brc20')) {
+              result = {
+                token: params.tick,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('rune')) {
+              result = {
+                rune: params.name || params.runeName,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('collection')) {
+              result = {
+                collection: params.slug,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('tx')) {
+              result = {
+                transaction: params.txid,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('utxo')) {
+              result = {
+                utxo: params.utxo,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else if (name.includes('sat')) {
+              result = {
+                satoshi: params.ordinal,
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            } else {
+              // Generic format for other tools
+              result = {
+                data: parsedData,
+                tool: name,
+                source: 'ordiscan'
+              };
+            }
+          } catch (error) {
+            console.error(`Error in Ordiscan ${name}:`, error);
+            ordiscanConnected = false; // Mark as disconnected
+            throw new Error(`Ordiscan ${name} failed: ${error.message}`);
+          }
+        } else {
+          throw new Error(`${name} not available - no Ordiscan connection`);
+        }
+        break;
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -534,5 +759,17 @@ app.listen(port, () => {
   console.log('- wallet-balance: Check wallet balance for a specific address');
   console.log('- crypto-chat: Chat with the AgentHustle AI about crypto and web3 topics');
   
+  if (ordiscanConnected) {
+    console.log('\n🔗 Ordiscan Bitcoin Tools (29 tools available):');
+    console.log('- ordiscan_address_brc20: Get BRC-20 token balances for a Bitcoin address');
+    console.log('- ordiscan_inscription_info: Get detailed information about a specific inscription');
+    console.log('- ordiscan_address_inscriptions: Get all inscriptions owned by a Bitcoin address');
+    console.log('- ordiscan_runes_list: Get a paginated list of all runes');
+    console.log('- ordiscan_collection_info: Get detailed information about a specific collection');
+    console.log('- ordiscan_tx_info: Get information about a Bitcoin transaction');
+    console.log('- And 23 more Bitcoin ordinals, inscriptions, BRC-20, and runes tools...');
+  }
+  
   console.log(`\nSmithery Integration: ${smitheryConnected ? '✓ Connected' : '✗ Not connected'}`);
+  console.log(`Ordiscan Integration: ${ordiscanConnected ? '✓ Connected' : '✗ Not connected'}`);
 }); 

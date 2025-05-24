@@ -150,6 +150,7 @@ async function handleCommand(input) {
         // Group tools by source
         const localTools = availableTools.filter(t => !t.source || t.source === 'local');
         const smitheryTools = availableTools.filter(t => t.source === 'smithery');
+        const ordiscanTools = availableTools.filter(t => t.source === 'ordiscan');
         
         if (localTools.length > 0) {
           console.log(chalk.blue('\n📦 Local Tools:'));
@@ -161,6 +162,13 @@ async function handleCommand(input) {
         if (smitheryTools.length > 0) {
           console.log(chalk.magenta('\n🌐 Smithery Hosted Tools:'));
           smitheryTools.forEach(tool => {
+            console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
+          });
+        }
+        
+        if (ordiscanTools.length > 0) {
+          console.log(chalk.cyan('\n🔗 Ordiscan Bitcoin Tools:'));
+          ordiscanTools.forEach(tool => {
             console.log(`- ${chalk.bold(tool.name)}: ${tool.description}`);
           });
         }
@@ -251,6 +259,20 @@ function parseToolCalls(content) {
           mappedToolName = smitheryTool ? 'brave_web_search' : (localTool ? 'brave-search' : toolName);
         } else if (toolName === 'brave_local_search') {
           mappedToolName = 'brave_local_search';
+        } else if (toolName.startsWith('ordiscan_') || toolName.includes('ordiscan')) {
+          // Handle Ordiscan tool names - they should match exactly
+          const ordiscanTool = availableTools.find(t => t.name === toolName);
+          mappedToolName = ordiscanTool ? toolName : toolName;
+        } else if (toolName.includes('brc20') || toolName.includes('inscription') || toolName.includes('rune')) {
+          // Handle Bitcoin-related tools that might be Ordiscan tools
+          // Try to find exact match first, then try with ordiscan_ prefix
+          let exactTool = availableTools.find(t => t.name === toolName);
+          if (!exactTool) {
+            exactTool = availableTools.find(t => t.name === `ordiscan_${toolName}`);
+            if (exactTool) {
+              mappedToolName = `ordiscan_${toolName}`;
+            }
+          }
         }
         
         return {
@@ -291,7 +313,7 @@ async function handleChatMode(input) {
         const tool = availableTools.find(t => t.name === toolCall.name);
         
         if (tool) {
-          const toolSource = tool.source === 'smithery' ? '🌐 Smithery' : '📦 Local';
+          const toolSource = (tool.source === 'smithery' || tool.source === 'ordiscan') ? '🌐 Smithery' : '📦 Local';
           console.log(chalk.blue(`\n🔧 Using ${toolCall.name} (${toolSource})...`));
           
           try {
@@ -311,6 +333,40 @@ async function handleChatMode(input) {
                   console.log(chalk.cyan(`📊 Found ${result.results.length} results for: "${result.query}"`));
                 } else if (result.response) {
                   console.log(chalk.cyan(`💬 Response: ${result.response.substring(0, 100)}...`));
+                } else if (result.source === 'ordiscan') {
+                  // Handle Ordiscan-specific result summaries
+                  if (result.address) {
+                    console.log(chalk.cyan(`🏠 Bitcoin address: ${result.address}`));
+                  } else if (result.inscription) {
+                    console.log(chalk.cyan(`🖼️ Inscription: ${result.inscription}`));
+                  } else if (result.token) {
+                    console.log(chalk.cyan(`🪙 BRC-20 token: ${result.token}`));
+                  } else if (result.rune) {
+                    console.log(chalk.cyan(`🔮 Rune: ${result.rune}`));
+                  } else if (result.collection) {
+                    console.log(chalk.cyan(`📚 Collection: ${result.collection}`));
+                  } else if (result.transaction) {
+                    console.log(chalk.cyan(`📝 Transaction: ${result.transaction}`));
+                  } else if (result.data && Array.isArray(result.data)) {
+                    console.log(chalk.cyan(`📊 Retrieved ${result.data.length} items`));
+                  } else if (result.data && result.data.length !== undefined) {
+                    console.log(chalk.cyan(`📊 Retrieved ${result.data.length} items from Ordiscan`));
+                  } else if (result.data && typeof result.data === 'object') {
+                    // More specific summaries based on tool type
+                    if (toolCall.name.includes('market')) {
+                      console.log(chalk.cyan(`💰 Market data retrieved for rune`));
+                    } else if (toolCall.name.includes('brc20_list')) {
+                      console.log(chalk.cyan(`📋 BRC-20 token list retrieved`));
+                    } else if (toolCall.name.includes('runes_list')) {
+                      console.log(chalk.cyan(`🔮 Runes list retrieved`));
+                    } else if (toolCall.name.includes('balance') || toolCall.name.includes('address')) {
+                      console.log(chalk.cyan(`💼 Address data retrieved`));
+                    } else {
+                      console.log(chalk.cyan(`✅ Ordiscan data retrieved successfully`));
+                    }
+                  } else {
+                    console.log(chalk.cyan(`✅ Ordiscan data retrieved successfully`));
+                  }
                 }
               }
               

@@ -15,6 +15,7 @@ This is an enhanced CLI boilerplate that demonstrates integration between AgentH
   - `trending-tokens`: Get trending tokens on various blockchains
   - `wallet-balance`: Check wallet balances
   - `crypto-chat`: Specialized crypto-focused chat
+  - **`ordiscan` tools**: 29 Bitcoin ordinals, inscriptions, BRC-20, and runes tools via Smithery
 
 - **Smithery Integration**:
   - **Hosted MCP Tools**: Access to Smithery's hosted tool ecosystem
@@ -50,8 +51,11 @@ HUSTLE_API_KEY=your-api-key-here
 VAULT_ID=your-vault-id-here
 
 # Smithery Configuration (for hosted tools)
-SMITHERY_API_KEY=your-smithery-api-key-here
+SMITHERY_API_KEY=your-smithery-api-key
 SMITHERY_PROFILE=your-smithery-profile-here
+
+# Ordiscan API Configuration
+ORDISCAN_API_KEY=your-ordiscan-api-key
 
 # Optional - Local Brave Search API (fallback only)
 BRAVE_API_KEY=your-brave-search-api-key
@@ -61,7 +65,12 @@ MCP_PORT=8081
 MCP_SERVER_URL=http://localhost:8081
 ```
 
-**Note**: You'll need to obtain your own Smithery credentials from [https://smithery.ai/](https://smithery.ai/) to use the hosted tools. Alternatively, you can use local tool implementations by providing the appropriate API keys.
+**Note**: You'll need to obtain your own credentials:
+- **Smithery credentials** from [https://smithery.ai/](https://smithery.ai/) for hosted tools
+- **Ordiscan API key** from the tool author for Bitcoin ordinals functionality
+- **Brave Search API key** (optional) for local search fallback
+
+All API keys must be configured in your `.env` file - no default keys are provided for security.
 
 ## Usage
 
@@ -96,12 +105,64 @@ node src/cli.js
 ```
 AgentHustle will automatically use the Smithery hosted Brave search tool and summarize the results.
 
-2. **Direct Tool Usage**:
+2. **Bitcoin Ordinals and BRC-20 Queries**:
+```
+[chat]> What BRC-20 tokens does this Bitcoin address own: bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
+[chat]> Show me information about the ORDI BRC-20 token
+[chat]> What inscriptions are in the taproot-wizards collection?
+[chat]> Get details about inscription b61b0172d95e266c18aea0c624db987e971a5d6d4ebc2aaed85da4642d635735i0
+```
+AgentHustle will automatically use the appropriate Ordiscan tools and provide detailed Bitcoin ordinals information.
+
+3. **Direct Tool Usage**:
 ```
 [chat]> /use brave-search
 Enter query: latest Solana developments
 Enter count (default: 5): 10
 ```
+
+## 🔗 Ordiscan Bitcoin Tools Integration
+
+This boilerplate includes **29 specialized Bitcoin tools** via the Ordiscan MCP integration:
+
+### 📊 BRC-20 Token Tools
+- `ordiscan_brc20_list`: Get paginated list of BRC-20 tokens
+- `ordiscan_brc20_info`: Get detailed information about specific BRC-20 tokens
+- `ordiscan_address_brc20`: Get BRC-20 token balances for any Bitcoin address
+- `ordiscan_address_brc20_activity`: Get BRC-20 transaction history for addresses
+
+### 🖼️ Inscription Tools  
+- `ordiscan_inscriptions_list`: Browse all inscriptions with pagination
+- `ordiscan_inscription_info`: Get detailed inscription information
+- `ordiscan_inscription_traits`: Get traits for specific inscriptions
+- `ordiscan_inscription_transfers`: Get transfer history for inscriptions
+- `ordiscan_address_inscriptions`: Get all inscriptions owned by an address
+
+### 🔮 Runes Tools
+- `ordiscan_runes_list`: Get paginated list of all runes
+- `ordiscan_rune_market`: Get latest price and market cap for runes
+- `ordiscan_rune_name_unlock`: Check when rune names become available
+- `ordiscan_address_runes`: Get rune balances for Bitcoin addresses
+- `ordiscan_runes_activity`: Get rune transfer activity
+
+### 📚 Collection Tools
+- `ordiscan_collections_list`: Browse indexed NFT collections
+- `ordiscan_collection_info`: Get detailed collection information
+- `ordiscan_collection_inscriptions`: Get inscriptions within collections
+
+### 📝 Transaction & UTXO Tools
+- `ordiscan_tx_info`: Get Bitcoin transaction information
+- `ordiscan_tx_inscriptions`: Get inscriptions created in transactions
+- `ordiscan_tx_runes`: Get runes minted/transferred in transactions
+- `ordiscan_address_utxos`: Get UTXOs and associated inscriptions/runes
+- `ordiscan_utxo_rare_sats`: Get rare satoshis in specific UTXOs
+
+### 💎 Rare Satoshis Tools
+- `ordiscan_address_rare_sats`: Get rare satoshis owned by addresses
+- `ordiscan_sat_info`: Get information about specific satoshis
+- `ordiscan_utxo_sat_ranges`: Get satoshi ranges for UTXOs
+
+All these tools work seamlessly with AgentHustle AI - just ask natural language questions about Bitcoin ordinals, and the AI will automatically select and use the appropriate tools!
 
 ## Smithery vs Local Tools
 
@@ -180,3 +241,18 @@ Feel free to contribute by:
 ## License
 
 MIT License - See LICENSE file for details
+
+## 🔒 Security
+
+**Important Security Notes:**
+
+- **Never commit API keys to version control** - The `.env` file is gitignored for this reason
+- **No hardcoded fallback keys** - All API keys must be provided via environment variables
+- **Use your own credentials** - No default or example API keys are provided in the codebase
+- **Environment-specific configuration** - Use different API keys for development, staging, and production
+
+If you accidentally commit API keys:
+1. Immediately revoke the exposed keys
+2. Generate new API keys
+3. Update your environment variables
+4. Consider using tools like `git-secrets` to prevent future accidents
